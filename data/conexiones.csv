@@ -1,0 +1,11 @@
+"OrigenID","DestinoID","Tiempo","Costo","Bidireccional"
+"SUC01","SUC02",25,15.50,true
+"SUC01","SUC03",35,22.00,true
+"SUC01","SUC04",20,12.00,true
+"SUC02","SUC04",30,18.00,true
+"SUC02","SUC06",180,95.00,true
+"SUC03","SUC07",40,25.00,true
+"SUC04","SUC05",150,80.00,true
+"SUC04","SUC03",45,28.00,true
+"SUC05","SUC06",240,130.00,false
+"SUC01","SUC07",60,38.00,true
