@@ -1,0 +1,8 @@
+"ID","Nombre","Ubicacion","TiempoIngreso","TiempoTraspaso","TiempoDespacho"
+"SUC01","Central Zona 1","Ciudad de Guatemala, Zona 1",30,45,20
+"SUC02","Norte Zona 18","Ciudad de Guatemala, Zona 18",25,40,15
+"SUC03","Sur Villa Nueva","Villa Nueva, Guatemala",35,50,25
+"SUC04","Oriente Mixco","Mixco, Guatemala",30,45,20
+"SUC05","Occidente Xela","Quetzaltenango, Xela",60,90,45
+"SUC06","Norte Petén","Flores, Petén",120,180,90
+"SUC07","Costa Sur Escuintla","Escuintla, Guatemala",45,60,30
