@@ -91,3 +91,7 @@ FORMS += mainwindow.ui
 qnx: target.path = /tmp/$${TARGET}/bin
 else: unix:!android: target.path = /opt/$${TARGET}/bin
 !isEmpty(target.path): INSTALLS += target
+
+# Fase 2 — CargadorRed
+HEADERS += $$PWD/include/CargadorRed.h
+SOURCES += $$PWD/src/CargadorRed.cpp
