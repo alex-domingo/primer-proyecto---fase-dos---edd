@@ -12,44 +12,48 @@ TARGET   = edd-proyecto-fase-2-gui
 TEMPLATE = app
 
 # ============================================================
-# Include paths — orden importante:
-#   1. core/include  → para que los #include entre clases core funcionen
-#   2. include       → clases nuevas de Fase 2
+# Include paths
 # ============================================================
 INCLUDEPATH += \
     $$PWD/core/include \
     $$PWD/include
 
 # ============================================================
-# Headers
+# Headers — core/ (Fase 1)
 # ============================================================
 HEADERS += \
-    mainwindow.h \
-    \
-    $$PWD/core/include/Producto.h          \
-    $$PWD/core/include/NodoLista.h         \
-    $$PWD/core/include/ListaSimple.h       \
-    $$PWD/core/include/ListaOrdenada.h     \
-    $$PWD/core/include/NodoAVL.h           \
-    $$PWD/core/include/ArbolAVL.h          \
-    $$PWD/core/include/NodoB.h             \
-    $$PWD/core/include/ArbolB.h            \
-    $$PWD/core/include/NodoBPlus.h         \
-    $$PWD/core/include/ArbolBPlus.h        \
-    $$PWD/core/include/NodoHash.h          \
-    $$PWD/core/include/TablaHash.h         \
-    $$PWD/core/include/Catalogo.h          \
-    $$PWD/core/include/CargadorCSV.h       \
+    $$PWD/core/include/Producto.h           \
+    $$PWD/core/include/NodoLista.h          \
+    $$PWD/core/include/ListaSimple.h        \
+    $$PWD/core/include/ListaOrdenada.h      \
+    $$PWD/core/include/NodoAVL.h            \
+    $$PWD/core/include/ArbolAVL.h           \
+    $$PWD/core/include/NodoB.h              \
+    $$PWD/core/include/ArbolB.h             \
+    $$PWD/core/include/NodoBPlus.h          \
+    $$PWD/core/include/ArbolBPlus.h         \
+    $$PWD/core/include/NodoHash.h           \
+    $$PWD/core/include/TablaHash.h          \
+    $$PWD/core/include/Catalogo.h           \
+    $$PWD/core/include/CargadorCSV.h        \
     $$PWD/core/include/MedidorRendimiento.h \
     $$PWD/core/include/VisualizadorDot.h
 
 # ============================================================
-# Sources
+# Headers — include/ (Fase 2)
+# ============================================================
+HEADERS += \
+    mainwindow.h                      \
+    $$PWD/include/Cola.h              \
+    $$PWD/include/Pila.h              \
+    $$PWD/include/Operacion.h         \
+    $$PWD/include/Sucursal.h          \
+    $$PWD/include/RedSucursales.h
+
+# ============================================================
+# Sources — core/ (Fase 1)
 # ============================================================
 SOURCES += \
-    main.cpp         \
-    mainwindow.cpp   \
-    \
     $$PWD/core/src/Producto.cpp           \
     $$PWD/core/src/NodoLista.cpp          \
     $$PWD/core/src/ListaSimple.cpp        \
@@ -66,6 +70,15 @@ SOURCES += \
     $$PWD/core/src/CargadorCSV.cpp        \
     $$PWD/core/src/MedidorRendimiento.cpp \
     $$PWD/core/src/VisualizadorDot.cpp
+
+# ============================================================
+# Sources — src/ (Fase 2)
+# ============================================================
+SOURCES += \
+    main.cpp                          \
+    mainwindow.cpp                    \
+    $$PWD/src/Sucursal.cpp            \
+    $$PWD/src/RedSucursales.cpp
 
 # ============================================================
 # Forms
