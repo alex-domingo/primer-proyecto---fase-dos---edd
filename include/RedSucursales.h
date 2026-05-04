@@ -80,7 +80,7 @@ public:
     // ── Consultas ─────────────────────────────────────────────
     Sucursal* buscarSucursal(const std::string &id) const;
     bool      existeConexion(const std::string &origenId,
-                              const std::string &destinoId) const;
+                        const std::string &destinoId) const;
     int       contarSucursales() const;
     int       contarConexiones() const;
 
@@ -98,10 +98,12 @@ public:
                        Criterio criterio = TIEMPO) const;
 
     // ── Transferencia de producto ─────────────────────────────
+    // unidades=0 transfiere todo el stock disponible
     bool transferirProducto(const std::string &codigoBarra,
                             const std::string &origenId,
                             const std::string &destinoId,
-                            Criterio criterio = TIEMPO);
+                            Criterio criterio = TIEMPO,
+                            int unidades = 0);
 
     // ── Visualización ─────────────────────────────────────────
     void mostrarRed() const;
