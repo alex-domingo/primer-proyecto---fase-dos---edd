@@ -44,9 +44,9 @@ bool RedSucursales::eliminarSucursal(const std::string &id) {
         auto &conns = n->conexiones;
         conns.erase(
             std::remove_if(conns.begin(), conns.end(),
-                [&id](const Conexion &c) {
-                    return c.origenId == id || c.destinoId == id;
-                }),
+                           [&id](const Conexion &c) {
+                               return c.origenId == id || c.destinoId == id;
+                           }),
             conns.end());
     }
     delete nodos[idx];
@@ -82,7 +82,7 @@ bool RedSucursales::eliminarConexion(const std::string &origenId,
 
     auto &conns = nodos[io]->conexiones;
     auto it = std::remove_if(conns.begin(), conns.end(),
-        [&destinoId](const Conexion &c) { return c.destinoId == destinoId; });
+                             [&destinoId](const Conexion &c) { return c.destinoId == destinoId; });
     if (it == conns.end()) return false;
     conns.erase(it, conns.end());
     return true;
@@ -237,7 +237,8 @@ double RedSucursales::calcularETA(const ResultadoRuta &ruta,
 bool RedSucursales::transferirProducto(const std::string &codigoBarra,
                                        const std::string &origenId,
                                        const std::string &destinoId,
-                                       Criterio criterio) {
+                                       Criterio criterio,
+                                       int unidades) {
     Sucursal *origen  = buscarSucursal(origenId);
     Sucursal *destino = buscarSucursal(destinoId);
     if (!origen || !destino) {
@@ -252,6 +253,14 @@ bool RedSucursales::transferirProducto(const std::string &codigoBarra,
         return false;
     }
 
+    // Validar stock disponible
+    if (unidades <= 0) unidades = p->stock; // 0 = transferir todo
+    if (unidades > p->stock) {
+        std::cout << "[Red] Stock insuficiente. Disponible: " << p->stock
+                  << ", solicitado: " << unidades << ".\n";
+        return false;
+    }
+
     ResultadoRuta ruta = rutaOptima(origenId, destinoId, criterio);
     if (!ruta.encontrada) {
         std::cout << "[Red] No existe ruta de " << origenId
@@ -259,11 +268,13 @@ bool RedSucursales::transferirProducto(const std::string &codigoBarra,
         return false;
     }
 
+    // Copia del producto con el stock a transferir
     Producto copia = *p;
+    copia.stock     = unidades;
     copia.estado    = "EnTransito";
     copia.sucursalId = destinoId;
 
-    // Registrar la transferencia como operación deshacible en origen
+    // Registrar operacion deshacible en origen
     origen->registrarOperacion(
         Operacion(Operacion::TRANSFERIR, copia, origenId, destinoId));
 
@@ -274,10 +285,19 @@ bool RedSucursales::transferirProducto(const std::string &codigoBarra,
 
         bool esDestino = (i == (int)ruta.nodos.size() - 1);
         if (esDestino) {
-            copia.estado    = "Disponible";
+            copia.estado     = "Disponible";
             copia.sucursalId = destinoId;
             s->recibirProducto(copia);
-            s->getCatalogo()->agregarProducto(copia);
+
+            // Si el producto ya existe en destino: sumar stock en las 6 estructuras
+            Producto *enDestino = s->buscarPorCodigo(codigoBarra);
+            if (enDestino) {
+                int nuevoStock = enDestino->stock + unidades;
+                s->getCatalogo()->actualizarStock(codigoBarra, nuevoStock);
+            } else {
+                // No existe en destino: agregarlo como nuevo
+                s->getCatalogo()->agregarProducto(copia);
+            }
         } else {
             s->prepararTraspaso(copia);
             s->moverATraspasoASalida();
@@ -285,14 +305,19 @@ bool RedSucursales::transferirProducto(const std::string &codigoBarra,
         }
     }
 
-    // Eliminar del inventario origen
-    origen->eliminarProducto(
-        copia.nombre, copia.codigoBarra,
-        copia.categoria, copia.fechaCaducidad);
+    // En origen: restar unidades o eliminar si queda en 0
+    int stockRestante = p->stock - unidades;
+    if (stockRestante <= 0) {
+        origen->eliminarProducto(
+            copia.nombre, copia.codigoBarra,
+            copia.categoria, copia.fechaCaducidad);
+    } else {
+        // Actualizar stock en las 6 estructuras del catálogo del origen
+        origen->getCatalogo()->actualizarStock(copia.codigoBarra, stockRestante);
+    }
 
-    std::cout << "[Red] Producto '" << copia.nombre
-              << "' transferido de " << origenId
-              << " a " << destinoId << ".\n";
+    std::cout << "[Red] " << unidades << " unidades de '" << copia.nombre
+              << "' transferidas de " << origenId << " a " << destinoId << ".\n";
     double eta = calcularETA(ruta, criterio);
     std::cout << "[Red] ETA estimado: " << eta << " segundos.\n";
     return true;

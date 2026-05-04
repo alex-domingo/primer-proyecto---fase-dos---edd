@@ -56,7 +56,7 @@ public:
     Producto *buscarPorCodigo(const std::string &codigoBarra); // ← NUEVA vía Hash
     void      buscarPorCategoria(const std::string &categoria);
     void      buscarPorRangoFecha(const std::string &inicio,
-                                  const std::string &fin);
+                             const std::string &fin);
 
     // ── Listados ─────────────────────────────────────────────
     void listarPorNombre()  const;
@@ -65,6 +65,10 @@ public:
 
     int  contarProductos()  const;
     bool estaVacio()        const;
+
+    // Actualiza el stock de un producto en todas las estructuras — O(n) listas + O(log n) AVL
+    // Usar cuando el stock cambia sin eliminar/reinsertar el producto
+    bool actualizarStock(const std::string &codigoBarra, int nuevoStock);
 
     // ── Acceso a estructuras (benchmark + visualizador) ──────
     ListaSimple   *obtenerListaSimple()   const { return listaSimple;   }

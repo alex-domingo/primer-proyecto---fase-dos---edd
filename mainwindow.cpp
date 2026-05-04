@@ -1,6 +1,6 @@
-#include "VisualizadorDot.h"
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include "VisualizadorDot.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -19,7 +19,6 @@
 #include <QTextEdit>
 #include <QListWidget>
 #include <QMessageBox>
-#include <QInputDialog>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QGraphicsScene>
@@ -27,14 +26,6 @@
 #include <QGraphicsEllipseItem>
 #include <QGraphicsLineItem>
 #include <QGraphicsTextItem>
-#include <QScrollArea>
-#include <QProgressBar>
-#include <QString>
-#include <QFont>
-#include <QColor>
-#include <QPalette>
-#include <QTimer>
-#include <QProcess>
 #include <QFileDialog>
 #include <QPixmap>
 #include <QSpinBox>
@@ -42,20 +33,26 @@
 #include <QRadioButton>
 #include <QButtonGroup>
 #include <QCheckBox>
+#include <QTimer>
+#include <QProcess>
+#include <QString>
+#include <QFont>
+#include <QColor>
+#include <chrono>
 #include <cmath>
 
-// ── Colores y estilos del sistema ─────────────────────────────
-static const QString AZUL_OSCURO  = "#1F3864";
-static const QString AZUL_MEDIO   = "#2E75B6";
-static const QString AZUL_CLARO   = "#BDD7EE";
-static const QString VERDE        = "#1E6B2E";
-static const QString VERDE_CLARO  = "#E8F5E9";
-static const QString ROJO         = "#8B0000";
-static const QString ROJO_CLARO   = "#FFEBEE";
-static const QString GRIS_CLARO   = "#F5F5F5";
-static const QString GRIS_BORDE   = "#DDDDDD";
-static const QString AMARILLO     = "#FFF9C4";
-static const QString NARANJA      = "#E65100";
+// ── Paleta y estilos del sistema ──────────────────────────────
+static const QString AZUL_OSCURO = "#1F3864";
+static const QString AZUL_MEDIO  = "#2E75B6";
+static const QString AZUL_CLARO  = "#BDD7EE";
+static const QString VERDE       = "#1E6B2E";
+static const QString VERDE_CLARO = "#E8F5E9";
+static const QString ROJO        = "#8B0000";
+static const QString GRIS_CLARO  = "#F5F5F5";
+static const QString GRIS_BORDE  = "#DDDDDD";
+static const QString AMARILLO    = "#FFF9C4";
+static const QString NARANJA     = "#E65100";
+static const QString TEXTO_NEGRO = "#1A1A1A"; // texto principal
 
 QString MainWindow::estiloBoton(const QString &color) {
     return QString(
@@ -63,19 +60,87 @@ QString MainWindow::estiloBoton(const QString &color) {
                "  background-color: %1; color: white; border: none;"
                "  border-radius: 4px; padding: 7px 16px; font-size: 12px; font-weight: bold;"
                "}"
-               "QPushButton:hover { background-color: %1; opacity: 0.85; border: 1px solid white; }"
+               "QPushButton:hover { background-color: %1; border: 1px solid white; }"
                "QPushButton:pressed { padding: 8px 15px 6px 17px; }"
+               "QPushButton:disabled { background-color: #B0B0B0; color: #E0E0E0; }"
                ).arg(color);
 }
 
 QString MainWindow::estiloHeader() {
     return QString(
-               "background-color: %1; color: white;"
-               "padding: 6px 10px; font-weight: bold; font-size: 12px;"
+               "QHeaderView::section {"
+               "  background-color: %1; color: white;"
+               "  padding: 7px 10px; font-weight: bold; font-size: 12px;"
+               "  border: none; border-right: 1px solid white;"
+               "}"
                ).arg(AZUL_OSCURO);
 }
 
-// ── Constructor / Destructor ──────────────────────────────────
+QString MainWindow::estiloTabla() {
+    // Estilo completo de QTableWidget — texto negro garantizado
+    return QString(
+               "QTableWidget {"
+               "  background-color: white; color: %1;"
+               "  alternate-background-color: %2;"
+               "  gridline-color: %3; font-size: 12px;"
+               "  selection-background-color: %4; selection-color: white;"
+               "}"
+               "QTableWidget::item { padding: 4px 6px; color: %1; }"
+               "QTableWidget::item:selected { color: white; }"
+               ).arg(TEXTO_NEGRO).arg(GRIS_CLARO).arg(GRIS_BORDE).arg(AZUL_MEDIO);
+}
+
+QString MainWindow::estiloCampo() {
+    return QString(
+               "QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {"
+               "  background: white; color: %1;"
+               "  border: 1px solid %2; border-radius: 4px;"
+               "  padding: 5px 8px; font-size: 12px;"
+               "}"
+               "QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {"
+               "  border: 1px solid %3;"
+               "}"
+               "QLineEdit:read-only { background: %4; }"
+               ).arg(TEXTO_NEGRO).arg(GRIS_BORDE).arg(AZUL_MEDIO).arg(GRIS_CLARO);
+}
+
+static QString estiloGroupBox() {
+    return QString(
+               "QGroupBox {"
+               "  font-weight: bold; font-size: 13px; color: %1;"
+               "  background: white;"
+               "  border: 1px solid %2; border-radius: 6px;"
+               "  margin-top: 10px; padding-top: 8px;"
+               "}"
+               "QGroupBox::title {"
+               "  subcontrol-origin: margin; left: 12px; padding: 0 6px;"
+               "  background: white; color: %1;"
+               "}"
+               ).arg(AZUL_OSCURO).arg(GRIS_BORDE);
+}
+
+static QString estiloLista() {
+    return QString(
+               "QListWidget {"
+               "  background: white; color: %1;"
+               "  border: 1px solid %2; font-size: 12px;"
+               "}"
+               "QListWidget::item { padding: 8px; border-bottom: 1px solid %3; color: %1; }"
+               "QListWidget::item:selected { background: %4; color: white; }"
+               ).arg(TEXTO_NEGRO).arg(GRIS_BORDE).arg(GRIS_CLARO).arg(AZUL_MEDIO);
+}
+
+static QString estiloTextEdit() {
+    return QString(
+               "QTextEdit {"
+               "  background: white; color: %1;"
+               "  border: 1px solid %2;"
+               "  font-family: 'Courier New'; font-size: 12px;"
+               "}"
+               ).arg(TEXTO_NEGRO).arg(GRIS_BORDE);
+}
+
+// ── Constructor ───────────────────────────────────────────────
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -86,7 +151,21 @@ MainWindow::MainWindow(QWidget *parent)
     setWindowTitle("Gestión de Catálogo — Red de Sucursales");
     resize(1280, 820);
     setMinimumSize(1100, 700);
-    cargarDatos();
+
+    // Forzamos paleta clara para evitar que el tema oscuro de Windows
+    // pinte texto blanco sobre fondo blanco
+    QPalette pal;
+    pal.setColor(QPalette::Window,        Qt::white);
+    pal.setColor(QPalette::WindowText,    QColor(TEXTO_NEGRO));
+    pal.setColor(QPalette::Base,          Qt::white);
+    pal.setColor(QPalette::AlternateBase, QColor(GRIS_CLARO));
+    pal.setColor(QPalette::Text,          QColor(TEXTO_NEGRO));
+    pal.setColor(QPalette::ButtonText,    QColor(TEXTO_NEGRO));
+    pal.setColor(QPalette::ToolTipBase,   Qt::white);
+    pal.setColor(QPalette::ToolTipText,   QColor(TEXTO_NEGRO));
+    setPalette(pal);
+
+    // El sistema arranca VACÍO — el usuario carga los CSV manualmente
     construirUI();
 }
 
@@ -95,21 +174,11 @@ MainWindow::~MainWindow() {
     delete ui;
 }
 
-// ── Carga inicial de datos ────────────────────────────────────
-
-void MainWindow::cargarDatos() {
-    CargadorRed cargador("data/errors_red.log");
-    cargador.cargarTodo(
-        "data/sucursales.csv",
-        "data/conexiones.csv",
-        "data/productos_fase2.csv",
-        *red);
-}
-
 // ── Construcción de la UI principal ──────────────────────────
 
 void MainWindow::construirUI() {
     QWidget *central = new QWidget(this);
+    central->setStyleSheet("background: white;");
     setCentralWidget(central);
     QVBoxLayout *mainLayout = new QVBoxLayout(central);
     mainLayout->setContentsMargins(0, 0, 0, 0);
@@ -118,9 +187,9 @@ void MainWindow::construirUI() {
     // Barra de título
     QFrame *header = new QFrame();
     header->setFixedHeight(52);
-    header->setStyleSheet(
-        QString("background-color: %1; border-bottom: 3px solid %2;")
-            .arg(AZUL_OSCURO).arg(AZUL_MEDIO));
+    header->setStyleSheet(QString(
+                              "background-color: %1; border-bottom: 3px solid %2;")
+                              .arg(AZUL_OSCURO).arg(AZUL_MEDIO));
     QHBoxLayout *hl = new QHBoxLayout(header);
     hl->setContentsMargins(16, 0, 16, 0);
 
@@ -129,24 +198,23 @@ void MainWindow::construirUI() {
     hl->addWidget(titulo);
     hl->addStretch();
 
-    int totalProd = 0;
-    for (auto s : red->obtenerSucursales()) totalProd += s->contarProductos();
-    QLabel *stats = new QLabel(
-        QString("  %1 sucursales  |  %2 conexiones  |  %3 productos  ")
-            .arg(red->contarSucursales())
-            .arg(red->contarConexiones())
-            .arg(totalProd));
-    stats->setStyleSheet("color: #AAD4FF; font-size: 12px;");
-    hl->addWidget(stats);
+    lblHeaderStats = new QLabel();
+    lblHeaderStats->setStyleSheet("color: #AAD4FF; font-size: 12px;");
+    hl->addWidget(lblHeaderStats);
     mainLayout->addWidget(header);
 
     // Tabs
     tabs = new QTabWidget();
-    tabs->setStyleSheet(
-        "QTabBar::tab { min-width: 120px; padding: 9px 16px; font-size: 12px; font-weight: bold; }"
-        "QTabBar::tab:selected { background: " + AZUL_MEDIO + "; color: white; }"
-                       "QTabBar::tab:!selected { background: #EEEEEE; color: #444; }"
-                       "QTabWidget::pane { border: 1px solid " + GRIS_BORDE + "; }");
+    tabs->setStyleSheet(QString(
+                            "QTabWidget::pane { border: 1px solid %1; background: white; }"
+                            "QTabBar::tab {"
+                            "  min-width: 120px; padding: 9px 16px;"
+                            "  font-size: 12px; font-weight: bold;"
+                            "  color: #444; background: #EEEEEE;"
+                            "}"
+                            "QTabBar::tab:selected { background: %2; color: white; }"
+                            "QTabBar::tab:hover:!selected { background: #DDDDDD; }"
+                            ).arg(GRIS_BORDE).arg(AZUL_MEDIO));
 
     tabs->addTab(crearTabSistema(),       "  Sistema  ");
     tabs->addTab(crearTabSucursales(),    "  Sucursales  ");
@@ -156,134 +224,162 @@ void MainWindow::construirUI() {
     tabs->addTab(crearTabRendimiento(),   "  Rendimiento  ");
     tabs->addTab(crearTabEstructuras(),   "  Visualización  ");
 
-    connect(tabs, &QTabWidget::currentChanged, this, &MainWindow::onTabCambiado);
     mainLayout->addWidget(tabs);
 
     // Barra de estado
     lblEstado = new QLabel();
-    actualizarBarraEstado();
     statusBar()->addWidget(lblEstado);
-    statusBar()->setStyleSheet(
-        "background: " + AZUL_OSCURO + "; color: #AAD4FF; font-size: 11px;");
+    statusBar()->setStyleSheet(QString(
+                                   "QStatusBar { background: %1; color: #AAD4FF; font-size: 11px; }"
+                                   "QStatusBar QLabel { color: #AAD4FF; }"
+                                   ).arg(AZUL_OSCURO));
 
-    connect(this, &MainWindow::redActualizada, this, &MainWindow::onRedActualizada);
+    connect(this, &MainWindow::redActualizada,
+            this, &MainWindow::onRedActualizada);
+
+    actualizarBarraEstado();
 }
 
 void MainWindow::actualizarBarraEstado() {
     int total = 0;
     for (auto s : red->obtenerSucursales()) total += s->contarProductos();
-    lblEstado->setText(
-        QString("  Red activa: %1 sucursales  |  %2 conexiones  |"
-                "  %3 productos totales  |  6 estructuras por sucursal  ")
+
+    QString msg;
+    if (red->contarSucursales() == 0) {
+        msg = "  Sistema iniciado — red vacía. Usa los botones de carga en el Tab Sistema.";
+    } else {
+        msg = QString("  %1 sucursales | %2 conexiones | %3 productos | 6 estructuras por sucursal  ")
+        .arg(red->contarSucursales())
+            .arg(red->contarConexiones())
+            .arg(total);
+    }
+    lblEstado->setText(msg);
+    lblHeaderStats->setText(
+        QString("  %1 sucursales | %2 conexiones | %3 productos  ")
             .arg(red->contarSucursales())
             .arg(red->contarConexiones())
             .arg(total));
 }
 
-void MainWindow::onRedActualizada() { actualizarBarraEstado(); }
-void MainWindow::onTabCambiado(int) { actualizarBarraEstado(); }
+void MainWindow::onRedActualizada() {
+    actualizarBarraEstado();
+}
 
 // ════════════════════════════════════════════════════════════
-// TAB 1 — SISTEMA
+// TAB 1 — SISTEMA (con carga manual de CSV)
 // ════════════════════════════════════════════════════════════
 QWidget* MainWindow::crearTabSistema() {
     QWidget *w = new QWidget();
+    w->setStyleSheet("background: white;");
     QVBoxLayout *lay = new QVBoxLayout(w);
-    lay->setContentsMargins(24, 20, 24, 20);
-    lay->setSpacing(16);
+    lay->setContentsMargins(20, 20, 20, 20);
+    lay->setSpacing(14);
 
-    // Título
     QLabel *titulo = new QLabel("Estado del Sistema");
-    titulo->setStyleSheet(
-        QString("color: %1; font-size: 18px; font-weight: bold;"
-                "border-bottom: 2px solid %2; padding-bottom: 8px;")
-            .arg(AZUL_OSCURO).arg(AZUL_MEDIO));
+    titulo->setStyleSheet(QString(
+                              "color: %1; font-size: 18px; font-weight: bold;"
+                              " border-bottom: 2px solid %2; padding-bottom: 8px;"
+                              " background: white;"
+                              ).arg(AZUL_OSCURO).arg(AZUL_MEDIO));
     lay->addWidget(titulo);
 
-    // Grid de tarjetas de estadísticas
+    // ── Tarjetas de estadísticas ──────────────────────────────
     QHBoxLayout *cards = new QHBoxLayout();
     cards->setSpacing(12);
 
-    auto tarjeta = [&](const QString &valor, const QString &etiqueta,
-                       const QString &color) {
+    auto crearTarjeta = [](const QString &color, const QString &lblText) {
         QFrame *f = new QFrame();
         f->setStyleSheet(QString(
-                             "background: %1; border-radius: 8px;"
-                             "border: 1px solid %2;").arg(color).arg(GRIS_BORDE));
+                             "QFrame { background: %1; border-radius: 8px;"
+                             " border: 1px solid %2; }"
+                             ).arg(color).arg(GRIS_BORDE));
         f->setFixedHeight(90);
         QVBoxLayout *fl = new QVBoxLayout(f);
         fl->setAlignment(Qt::AlignCenter);
-        QLabel *lv = new QLabel(valor);
+        QLabel *lv = new QLabel("0");
         lv->setAlignment(Qt::AlignCenter);
-        lv->setStyleSheet(
-            QString("color: %1; font-size: 26px; font-weight: bold;").arg(AZUL_OSCURO));
-        QLabel *le = new QLabel(etiqueta);
+        lv->setStyleSheet(QString(
+                              "color: %1; font-size: 28px; font-weight: bold; background: transparent;"
+                              ).arg(AZUL_OSCURO));
+        QLabel *le = new QLabel(lblText);
         le->setAlignment(Qt::AlignCenter);
-        le->setStyleSheet("color: #555; font-size: 11px;");
+        le->setStyleSheet("color: #555; font-size: 11px; background: transparent;");
         fl->addWidget(lv); fl->addWidget(le);
+        f->setProperty("valLabel", QVariant::fromValue((void*)lv));
         return f;
     };
 
-    int totalProd = 0;
-    for (auto s : red->obtenerSucursales()) totalProd += s->contarProductos();
-
-    cards->addWidget(tarjeta(QString::number(red->contarSucursales()),
-                             "Sucursales", AZUL_CLARO));
-    cards->addWidget(tarjeta(QString::number(red->contarConexiones()),
-                             "Conexiones en la red", AZUL_CLARO));
-    cards->addWidget(tarjeta(QString::number(totalProd),
-                             "Productos totales", VERDE_CLARO));
-    cards->addWidget(tarjeta("6",
-                             "Estructuras por sucursal", AMARILLO));
+    QFrame *tSuc  = crearTarjeta(AZUL_CLARO, "Sucursales");
+    QFrame *tCon  = crearTarjeta(AZUL_CLARO, "Conexiones");
+    QFrame *tProd = crearTarjeta(VERDE_CLARO, "Productos totales");
+    QFrame *tEst  = crearTarjeta(AMARILLO, "Estructuras por sucursal");
+    cards->addWidget(tSuc); cards->addWidget(tCon);
+    cards->addWidget(tProd); cards->addWidget(tEst);
     lay->addLayout(cards);
 
-    // Estado de estructuras por sucursal
-    QGroupBox *gbEst = new QGroupBox("Estructuras de datos activas por sucursal");
-    gbEst->setStyleSheet(
-        "QGroupBox { font-weight: bold; font-size: 13px; color: " + AZUL_OSCURO + "; "
-                                                                                  "border: 1px solid " + GRIS_BORDE + "; border-radius: 6px; margin-top: 8px; }"
-                       "QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 4px; }");
-    QGridLayout *glay = new QGridLayout(gbEst);
+    auto actualizarTarjetas = [=]() {
+        int total = 0;
+        for (auto s : red->obtenerSucursales()) total += s->contarProductos();
+        ((QLabel*)tSuc->property("valLabel").value<void*>())->setText(
+            QString::number(red->contarSucursales()));
+        ((QLabel*)tCon->property("valLabel").value<void*>())->setText(
+            QString::number(red->contarConexiones()));
+        ((QLabel*)tProd->property("valLabel").value<void*>())->setText(
+            QString::number(total));
+        ((QLabel*)tEst->property("valLabel").value<void*>())->setText("6");
+    };
+    actualizarTarjetas();
 
-    struct { QString nombre; QString complejidad; QString descripcion; } estructuras[] = {
-                       {"Lista Simple",   "O(1) ins / O(n) búsq",  "Orden de inserción, base comparativa"},
-                       {"Lista Ordenada", "O(n) ins / O(n) búsq*", "Orden alfabético, corte anticipado"},
-                       {"Árbol AVL",      "O(log n)",               "Búsqueda por nombre, balance garantizado"},
-                       {"Árbol B",        "O(log n+k)",             "Búsqueda por rango de fechas"},
-                       {"Árbol B+",       "O(log n+k)",             "Búsqueda por categoría, hojas enlazadas"},
-                       {"Tabla Hash",     "O(1) amortizado",        "Búsqueda por código de barra (10 dígitos)"},
-                       };
+    // ── Carga de CSV ──────────────────────────────────────────
+    QGroupBox *gbCarga = new QGroupBox("Carga de archivos CSV");
+    gbCarga->setStyleSheet(estiloGroupBox());
+    QVBoxLayout *cLay = new QVBoxLayout(gbCarga);
+    cLay->setContentsMargins(16, 16, 16, 16);
+    cLay->setSpacing(8);
 
-    QStringList colores = {AZUL_CLARO, AZUL_CLARO, VERDE_CLARO,
-                           "#FFE0B2", "#FFE0B2", AMARILLO};
-    for (int i = 0; i < 6; i++) {
-        QFrame *ef = new QFrame();
-        ef->setStyleSheet(QString(
-                              "background: %1; border-radius: 4px; padding: 4px;").arg(colores[i]));
-        QHBoxLayout *el = new QHBoxLayout(ef);
-        el->setContentsMargins(8, 4, 8, 4);
-        QLabel *check = new QLabel("✔");
-        check->setStyleSheet("color: " + VERDE + "; font-size: 14px; font-weight: bold;");
-        check->setFixedWidth(20);
-        QLabel *nombre = new QLabel(
-            QString("<b>%1</b>  <span style='color:#555; font-size:11px;'>%2</span>")
-                .arg(estructuras[i].nombre).arg(estructuras[i].descripcion));
-        nombre->setTextFormat(Qt::RichText);
-        QLabel *comp = new QLabel(estructuras[i].complejidad);
-        comp->setStyleSheet(
-            "color: " + AZUL_OSCURO + "; font-family: Courier New;"
-                                      " font-size: 11px; font-weight: bold;");
-        comp->setFixedWidth(160);
-        comp->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        el->addWidget(check); el->addWidget(nombre); el->addStretch(); el->addWidget(comp);
-        glay->addWidget(ef, i / 2, i % 2);
-    }
-    lay->addWidget(gbEst);
+    QLabel *info = new QLabel(
+        "El sistema arranca con la red vacía. Puedes cargar los archivos CSV individualmente "
+        "o todos a la vez con \"Cargar todo\". El orden importa: sucursales → conexiones → productos.");
+    info->setWordWrap(true);
+    info->setStyleSheet(QString(
+                            "color: %1; font-size: 12px; padding: 4px; background: %2;"
+                            " border-radius: 4px; padding: 8px;"
+                            ).arg(TEXTO_NEGRO).arg(GRIS_CLARO));
+    cLay->addWidget(info);
 
-    // Resumen por sucursal
+    QHBoxLayout *btnLay = new QHBoxLayout();
+    QPushButton *btnSuc  = new QPushButton("📂 Cargar Sucursales");
+    QPushButton *btnConn = new QPushButton("📂 Cargar Conexiones");
+    QPushButton *btnProd = new QPushButton("📂 Cargar Productos");
+    QPushButton *btnTodo = new QPushButton("⚡ Cargar Todo (default)");
+    QPushButton *btnLimpiar = new QPushButton("🗑 Limpiar Red");
+    btnSuc->setStyleSheet(estiloBoton(AZUL_MEDIO));
+    btnConn->setStyleSheet(estiloBoton(AZUL_MEDIO));
+    btnProd->setStyleSheet(estiloBoton(AZUL_MEDIO));
+    btnTodo->setStyleSheet(estiloBoton(VERDE));
+    btnLimpiar->setStyleSheet(estiloBoton(ROJO));
+    btnLay->addWidget(btnSuc);
+    btnLay->addWidget(btnConn);
+    btnLay->addWidget(btnProd);
+    btnLay->addStretch();
+    btnLay->addWidget(btnTodo);
+    btnLay->addWidget(btnLimpiar);
+    cLay->addLayout(btnLay);
+
+    QLabel *lblLog = new QLabel("Esperando carga de archivos...");
+    lblLog->setStyleSheet(QString(
+                              "color: %1; font-family: 'Courier New'; font-size: 11px;"
+                              " padding: 6px; background: %2; border: 1px solid %3; border-radius: 3px;"
+                              ).arg(TEXTO_NEGRO).arg(GRIS_CLARO).arg(GRIS_BORDE));
+    lblLog->setWordWrap(true);
+    cLay->addWidget(lblLog);
+    lay->addWidget(gbCarga);
+
+    // ── Tabla de sucursales actualizable ──────────────────────
     QGroupBox *gbSuc = new QGroupBox("Inventario por sucursal");
-    gbSuc->setStyleSheet(gbEst->styleSheet());
+    gbSuc->setStyleSheet(estiloGroupBox());
     QVBoxLayout *sucLay = new QVBoxLayout(gbSuc);
+    sucLay->setContentsMargins(16, 16, 16, 16);
 
     QTableWidget *tbl = new QTableWidget();
     tbl->setColumnCount(5);
@@ -294,58 +390,154 @@ QWidget* MainWindow::crearTabSistema() {
     tbl->setSelectionBehavior(QAbstractItemView::SelectRows);
     tbl->setEditTriggers(QAbstractItemView::NoEditTriggers);
     tbl->setAlternatingRowColors(true);
-    tbl->setStyleSheet("alternate-background-color: " + GRIS_CLARO + ";");
+    tbl->setStyleSheet(estiloTabla());
     tbl->verticalHeader()->setVisible(false);
-
-    auto sucursales = red->obtenerSucursales();
-    tbl->setRowCount((int)sucursales.size());
-    for (int i = 0; i < (int)sucursales.size(); i++) {
-        Sucursal *s = sucursales[i];
-        tbl->setItem(i, 0, new QTableWidgetItem(QString::fromStdString(s->getId())));
-        tbl->setItem(i, 1, new QTableWidgetItem(QString::fromStdString(s->getNombre())));
-        tbl->setItem(i, 2, new QTableWidgetItem(QString::fromStdString(s->getUbicacion())));
-        tbl->setItem(i, 3, new QTableWidgetItem(QString::number(s->contarProductos())));
-        tbl->setItem(i, 4, new QTableWidgetItem(
-                               QString("%1s / %2s / %3s")
-                                   .arg(s->getTiempoIngreso())
-                                   .arg(s->getTiempoTraspaso())
-                                   .arg(s->getTiempoDespacho())));
-    }
-    tbl->resizeColumnsToContents();
     sucLay->addWidget(tbl);
-    lay->addWidget(gbSuc);
-    lay->addStretch();
+    lay->addWidget(gbSuc, 1);
+
+    // Función para refrescar la tabla
+    auto refrescarTabla = [=]() {
+        auto sucursales = red->obtenerSucursales();
+        tbl->setRowCount((int)sucursales.size());
+        for (int i = 0; i < (int)sucursales.size(); i++) {
+            Sucursal *s = sucursales[i];
+            auto crearItem = [](const QString &t) {
+                QTableWidgetItem *it = new QTableWidgetItem(t);
+                it->setForeground(QColor(TEXTO_NEGRO));
+                return it;
+            };
+            tbl->setItem(i, 0, crearItem(QString::fromStdString(s->getId())));
+            tbl->setItem(i, 1, crearItem(QString::fromStdString(s->getNombre())));
+            tbl->setItem(i, 2, crearItem(QString::fromStdString(s->getUbicacion())));
+            tbl->setItem(i, 3, crearItem(QString::number(s->contarProductos())));
+            tbl->setItem(i, 4, crearItem(
+                                   QString("%1s / %2s / %3s")
+                                       .arg(s->getTiempoIngreso())
+                                       .arg(s->getTiempoTraspaso())
+                                       .arg(s->getTiempoDespacho())));
+        }
+        tbl->resizeColumnsToContents();
+    };
+    refrescarTabla();
+
+    // ── Conexiones de los botones de carga ────────────────────
+    auto cargarSucursales = [=](const QString &ruta) {
+        CargadorRed cargador("data/errors_red.log");
+        int n = cargador.cargarSucursales(ruta.toStdString(), *red);
+        lblLog->setText(QString("✔ %1 sucursales cargadas desde %2").arg(n).arg(ruta));
+        refrescarTabla();
+        actualizarTarjetas();
+        emit redActualizada();
+    };
+    auto cargarConexiones = [=](const QString &ruta) {
+        if (red->contarSucursales() == 0) {
+            QMessageBox::warning(w, "Atención",
+                                 "Carga primero las sucursales antes que las conexiones.");
+            return;
+        }
+        CargadorRed cargador("data/errors_red.log");
+        int n = cargador.cargarConexiones(ruta.toStdString(), *red);
+        lblLog->setText(QString("✔ %1 conexiones cargadas desde %2").arg(n).arg(ruta));
+        actualizarTarjetas();
+        emit redActualizada();
+    };
+    auto cargarProductos = [=](const QString &ruta) {
+        if (red->contarSucursales() == 0) {
+            QMessageBox::warning(w, "Atención",
+                                 "Carga primero las sucursales antes que los productos.");
+            return;
+        }
+        CargadorRed cargador("data/errors_red.log");
+        int n = cargador.cargarProductos(ruta.toStdString(), *red);
+        lblLog->setText(QString("✔ %1 productos cargados desde %2").arg(n).arg(ruta));
+        refrescarTabla();
+        actualizarTarjetas();
+        emit redActualizada();
+    };
+
+    connect(btnSuc, &QPushButton::clicked, [=]() {
+        QString ruta = QFileDialog::getOpenFileName(w, "Cargar Sucursales",
+                                                    "data/", "CSV (*.csv)");
+        if (!ruta.isEmpty()) cargarSucursales(ruta);
+    });
+    connect(btnConn, &QPushButton::clicked, [=]() {
+        QString ruta = QFileDialog::getOpenFileName(w, "Cargar Conexiones",
+                                                    "data/", "CSV (*.csv)");
+        if (!ruta.isEmpty()) cargarConexiones(ruta);
+    });
+    connect(btnProd, &QPushButton::clicked, [=]() {
+        QString ruta = QFileDialog::getOpenFileName(w, "Cargar Productos",
+                                                    "data/", "CSV (*.csv)");
+        if (!ruta.isEmpty()) cargarProductos(ruta);
+    });
+    connect(btnTodo, &QPushButton::clicked, [=]() {
+        if (red->contarSucursales() > 0) {
+            int r = QMessageBox::question(w, "Confirmar",
+                                          "La red ya tiene datos cargados. ¿Cargar los CSV adicionales?\n"
+                                          "Los duplicados se omitirán.");
+            if (r != QMessageBox::Yes) return;
+        }
+        CargadorRed cargador("data/errors_red.log");
+        bool ok = cargador.cargarTodo(
+            "data/sucursales.csv",
+            "data/conexiones.csv",
+            "data/productos_fase2.csv",
+            *red);
+        int total = 0;
+        for (auto s : red->obtenerSucursales()) total += s->contarProductos();
+        lblLog->setText(ok
+                            ? QString("✔ Carga completa: %1 sucursales, %2 conexiones, %3 productos")
+                                  .arg(red->contarSucursales())
+                                  .arg(red->contarConexiones())
+                                  .arg(total)
+                            : "✗ Error en la carga. Revisa data/errors_red.log");
+        refrescarTabla();
+        actualizarTarjetas();
+        emit redActualizada();
+    });
+    connect(btnLimpiar, &QPushButton::clicked, [=]() {
+        int r = QMessageBox::question(w, "Confirmar",
+                                      "¿Limpiar toda la red? Se perderán todos los datos no guardados.");
+        if (r != QMessageBox::Yes) return;
+        delete red;
+        red = new RedSucursales();
+        // Como el lambda captura `red` por copia del puntero, necesitamos
+        // recrear el handler — pero como es miembro de la clase, usamos this->red
+        // (este es el motivo por el cual `red` es miembro y no local)
+        lblLog->setText("✔ Red limpiada. Lista para nueva carga.");
+        refrescarTabla();
+        actualizarTarjetas();
+        emit redActualizada();
+    });
+
+    // Conectarse a redActualizada para refrescar la tabla automáticamente
+    connect(this, &MainWindow::redActualizada, [=]() {
+        refrescarTabla();
+        actualizarTarjetas();
+    });
+
     return w;
 }
 
 // ════════════════════════════════════════════════════════════
-// TAB 2 — SUCURSALES
+// TAB 2 — SUCURSALES (con auto-refresh)
 // ════════════════════════════════════════════════════════════
 QWidget* MainWindow::crearTabSucursales() {
     QWidget *w = new QWidget();
+    w->setStyleSheet("background: white;");
     QHBoxLayout *lay = new QHBoxLayout(w);
     lay->setContentsMargins(12, 12, 12, 12);
     lay->setSpacing(12);
 
-    // Panel izquierdo — lista de sucursales
+    // Panel izquierdo
     QGroupBox *gbLista = new QGroupBox("Sucursales en la red");
-    gbLista->setStyleSheet(
-        "QGroupBox { font-weight: bold; color: " + AZUL_OSCURO + ";"
-                                                                 " border: 1px solid " + GRIS_BORDE + "; border-radius: 6px; margin-top: 8px; }"
-                       "QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 4px; }");
+    gbLista->setStyleSheet(estiloGroupBox());
     gbLista->setFixedWidth(280);
     QVBoxLayout *lLay = new QVBoxLayout(gbLista);
+    lLay->setContentsMargins(12, 16, 12, 12);
 
     QListWidget *listaSuc = new QListWidget();
-    listaSuc->setStyleSheet(
-        "QListWidget::item { padding: 10px 8px; border-bottom: 1px solid " + GRIS_BORDE + "; }"
-                                                                                          "QListWidget::item:selected { background: " + AZUL_MEDIO + "; color: white; }");
-    for (Sucursal *s : red->obtenerSucursales()) {
-        listaSuc->addItem(
-            QString("[%1] %2")
-                .arg(QString::fromStdString(s->getId()))
-                .arg(QString::fromStdString(s->getNombre())));
-    }
+    listaSuc->setStyleSheet(estiloLista());
     lLay->addWidget(listaSuc);
 
     QHBoxLayout *btnLay = new QHBoxLayout();
@@ -358,46 +550,38 @@ QWidget* MainWindow::crearTabSucursales() {
     lLay->addLayout(btnLay);
     lay->addWidget(gbLista);
 
-    // Panel derecho — detalle de la sucursal seleccionada
+    // Panel derecho
     QSplitter *splitter = new QSplitter(Qt::Vertical);
 
-    // Info de la sucursal
     QGroupBox *gbInfo = new QGroupBox("Detalle de sucursal");
-    gbInfo->setStyleSheet(gbLista->styleSheet());
+    gbInfo->setStyleSheet(estiloGroupBox());
     QFormLayout *fLay = new QFormLayout(gbInfo);
     fLay->setSpacing(10);
-    fLay->setContentsMargins(16, 16, 16, 16);
+    fLay->setContentsMargins(16, 20, 16, 16);
 
-    auto campo = [](const QString &v = "") {
-        QLineEdit *e = new QLineEdit(v);
-        e->setStyleSheet(
-            "border: 1px solid " + GRIS_BORDE + "; border-radius: 4px;"
-                                                " padding: 5px 8px; font-size: 12px;");
-        return e;
+    QLineEdit *eId        = new QLineEdit(); eId->setReadOnly(true);
+    QLineEdit *eNombre    = new QLineEdit();
+    QLineEdit *eUbicacion = new QLineEdit();
+    QSpinBox  *eTIngreso  = new QSpinBox(); eTIngreso->setRange(0, 9999); eTIngreso->setSuffix(" s");
+    QSpinBox  *eTTraspaso = new QSpinBox(); eTTraspaso->setRange(0, 9999); eTTraspaso->setSuffix(" s");
+    QSpinBox  *eTDespacho = new QSpinBox(); eTDespacho->setRange(0, 9999); eTDespacho->setSuffix(" s");
+
+    QString cstyle = estiloCampo();
+    eId->setStyleSheet(cstyle); eNombre->setStyleSheet(cstyle);
+    eUbicacion->setStyleSheet(cstyle); eTIngreso->setStyleSheet(cstyle);
+    eTTraspaso->setStyleSheet(cstyle); eTDespacho->setStyleSheet(cstyle);
+
+    auto crearLabel = [](const QString &t) {
+        QLabel *l = new QLabel(t);
+        l->setStyleSheet(QString("color: %1; font-weight: bold;").arg(TEXTO_NEGRO));
+        return l;
     };
-    auto campoSpin = []() {
-        QSpinBox *s = new QSpinBox();
-        s->setRange(0, 9999); s->setSuffix(" s");
-        s->setStyleSheet(
-            "border: 1px solid " + GRIS_BORDE + "; border-radius: 4px;"
-                                                " padding: 4px; font-size: 12px;");
-        return s;
-    };
-
-    QLineEdit *eId        = campo(); eId->setReadOnly(true);
-    eId->setStyleSheet(eId->styleSheet() + " background: " + GRIS_CLARO + ";");
-    QLineEdit *eNombre    = campo();
-    QLineEdit *eUbicacion = campo();
-    QSpinBox  *eTIngreso  = campoSpin();
-    QSpinBox  *eTTraspaso = campoSpin();
-    QSpinBox  *eTDespacho = campoSpin();
-
-    fLay->addRow("ID:",                eId);
-    fLay->addRow("Nombre:",            eNombre);
-    fLay->addRow("Ubicación:",         eUbicacion);
-    fLay->addRow("T. Ingreso (s):",    eTIngreso);
-    fLay->addRow("T. Traspaso (s):",   eTTraspaso);
-    fLay->addRow("T. Despacho (s):",   eTDespacho);
+    fLay->addRow(crearLabel("ID:"),                eId);
+    fLay->addRow(crearLabel("Nombre:"),            eNombre);
+    fLay->addRow(crearLabel("Ubicación:"),         eUbicacion);
+    fLay->addRow(crearLabel("T. Ingreso (s):"),    eTIngreso);
+    fLay->addRow(crearLabel("T. Traspaso (s):"),   eTTraspaso);
+    fLay->addRow(crearLabel("T. Despacho (s):"),   eTDespacho);
 
     QPushButton *btnGuardar = new QPushButton("  Guardar cambios");
     btnGuardar->setStyleSheet(estiloBoton(AZUL_MEDIO));
@@ -405,34 +589,60 @@ QWidget* MainWindow::crearTabSucursales() {
     fLay->addRow("", btnGuardar);
     splitter->addWidget(gbInfo);
 
-    // Inventario de la sucursal seleccionada
+    // Inventario
     QGroupBox *gbInv = new QGroupBox("Inventario de la sucursal");
-    gbInv->setStyleSheet(gbLista->styleSheet());
+    gbInv->setStyleSheet(estiloGroupBox());
     QVBoxLayout *invLay = new QVBoxLayout(gbInv);
+    invLay->setContentsMargins(12, 16, 12, 12);
 
     QLineEdit *buscarInv = new QLineEdit();
     buscarInv->setPlaceholderText("Buscar producto en esta sucursal...");
-    buscarInv->setStyleSheet(campo()->styleSheet());
+    buscarInv->setStyleSheet(cstyle);
     invLay->addWidget(buscarInv);
 
     QTableWidget *tblInv = new QTableWidget();
     tblInv->setColumnCount(6);
     tblInv->setHorizontalHeaderLabels(
-        {"Nombre","Código","Categoría","Caducidad","Precio Q","Stock"});
+        {"Nombre", "Código", "Categoría", "Caducidad", "Precio Q", "Stock"});
     tblInv->horizontalHeader()->setStretchLastSection(true);
     tblInv->horizontalHeader()->setStyleSheet(estiloHeader());
     tblInv->setSelectionBehavior(QAbstractItemView::SelectRows);
     tblInv->setEditTriggers(QAbstractItemView::NoEditTriggers);
     tblInv->setAlternatingRowColors(true);
+    tblInv->setStyleSheet(estiloTabla());
     tblInv->verticalHeader()->setVisible(false);
     invLay->addWidget(tblInv);
     splitter->addWidget(gbInv);
-    splitter->setSizes({220, 380});
+    splitter->setSizes({240, 380});
     lay->addWidget(splitter, 1);
 
-    // ── Conexiones de señales ─────────────────────────────────
+    // Función de refresh — clave para que los cambios en otros tabs se reflejen
+    auto refrescarLista = [=]() {
+        QString seleccionado;
+        if (listaSuc->currentItem())
+            seleccionado = listaSuc->currentItem()->text();
+        listaSuc->clear();
+        for (Sucursal *s : red->obtenerSucursales()) {
+            listaSuc->addItem(
+                QString("[%1] %2")
+                    .arg(QString::fromStdString(s->getId()))
+                    .arg(QString::fromStdString(s->getNombre())));
+        }
+        // Restaurar selección si todavía existe
+        for (int i = 0; i < listaSuc->count(); i++) {
+            if (listaSuc->item(i)->text() == seleccionado) {
+                listaSuc->setCurrentRow(i); return;
+            }
+        }
+        if (listaSuc->count() > 0) listaSuc->setCurrentRow(0);
+        else {
+            tblInv->setRowCount(0);
+            eId->clear(); eNombre->clear(); eUbicacion->clear();
+            eTIngreso->setValue(0); eTTraspaso->setValue(0); eTDespacho->setValue(0);
+            btnGuardar->setEnabled(false);
+        }
+    };
 
-    // Al seleccionar una sucursal, rellenar los campos
     auto cargarSucursal = [=](int row) {
         if (row < 0) return;
         auto sucursales = red->obtenerSucursales();
@@ -446,31 +656,33 @@ QWidget* MainWindow::crearTabSucursales() {
         eTTraspaso->setValue(s->getTiempoTraspaso());
         eTDespacho->setValue(s->getTiempoDespacho());
         btnGuardar->setEnabled(true);
-        gbInfo->setTitle("Detalle — " + QString::fromStdString(s->getNombre()));
 
-        // Cargar inventario
-        Catalogo *cat = s->getCatalogo();
-        // Usamos la lista ordenada para mostrar en A-Z
-        // Construimos la tabla — recorremos via AVL in-order capturando en vector
-        struct Collector {
-            static void recolectar(NodoAVL *n, QTableWidget *t, int &r) {
+        // Inventario via AVL in-order
+        struct Walker {
+            static void walk(NodoAVL *n, QTableWidget *t, int &r) {
                 if (!n) return;
-                recolectar(n->izquierda, t, r);
+                walk(n->izquierda, t, r);
                 Producto &p = n->dato;
                 t->setRowCount(r + 1);
-                t->setItem(r, 0, new QTableWidgetItem(QString::fromStdString(p.nombre)));
-                t->setItem(r, 1, new QTableWidgetItem(QString::fromStdString(p.codigoBarra)));
-                t->setItem(r, 2, new QTableWidgetItem(QString::fromStdString(p.categoria)));
-                t->setItem(r, 3, new QTableWidgetItem(QString::fromStdString(p.fechaCaducidad)));
-                t->setItem(r, 4, new QTableWidgetItem(QString("Q%1").arg(p.precio, 0, 'f', 2)));
-                t->setItem(r, 5, new QTableWidgetItem(QString::number(p.stock)));
+                auto mk = [](const QString &v) {
+                    QTableWidgetItem *it = new QTableWidgetItem(v);
+                    it->setForeground(QColor(TEXTO_NEGRO));
+                    return it;
+                };
+                t->setItem(r, 0, mk(QString::fromStdString(p.nombre)));
+                t->setItem(r, 1, mk(QString::fromStdString(p.codigoBarra)));
+                t->setItem(r, 2, mk(QString::fromStdString(p.categoria)));
+                t->setItem(r, 3, mk(QString::fromStdString(p.fechaCaducidad)));
+                t->setItem(r, 4, mk(QString("Q%1").arg(p.precio, 0, 'f', 2)));
+                t->setItem(r, 5, mk(QString::number(p.stock)));
                 r++;
-                recolectar(n->derecha, t, r);
+                walk(n->derecha, t, r);
             }
         };
         tblInv->setRowCount(0);
         int fila = 0;
-        Collector::recolectar(cat->obtenerArbolAVL()->obtenerRaiz(), tblInv, fila);
+        Walker::walk(s->getCatalogo()->obtenerArbolAVL()->obtenerRaiz(),
+                     tblInv, fila);
         tblInv->resizeColumnsToContents();
         gbInv->setTitle(QString("Inventario — %1  (%2 productos)")
                             .arg(QString::fromStdString(s->getNombre()))
@@ -479,40 +691,32 @@ QWidget* MainWindow::crearTabSucursales() {
 
     connect(listaSuc, &QListWidget::currentRowChanged, cargarSucursal);
 
-    // Buscar en inventario
-    connect(buscarInv, &QLineEdit::textChanged, [=](const QString &texto) {
+    connect(buscarInv, &QLineEdit::textChanged, [=](const QString &t) {
         for (int i = 0; i < tblInv->rowCount(); i++) {
-            bool visible = texto.isEmpty() ||
-                           tblInv->item(i, 0)->text().contains(texto, Qt::CaseInsensitive) ||
-                           tblInv->item(i, 1)->text().contains(texto, Qt::CaseInsensitive) ||
-                           tblInv->item(i, 2)->text().contains(texto, Qt::CaseInsensitive);
-            tblInv->setRowHidden(i, !visible);
+            bool vis = t.isEmpty() ||
+                       tblInv->item(i, 0)->text().contains(t, Qt::CaseInsensitive) ||
+                       tblInv->item(i, 1)->text().contains(t, Qt::CaseInsensitive) ||
+                       tblInv->item(i, 2)->text().contains(t, Qt::CaseInsensitive);
+            tblInv->setRowHidden(i, !vis);
         }
     });
 
-    // Guardar cambios de la sucursal
     connect(btnGuardar, &QPushButton::clicked, [=]() {
-        QString id = eId->text();
-        Sucursal *s = red->buscarSucursal(id.toStdString());
+        Sucursal *s = red->buscarSucursal(eId->text().toStdString());
         if (!s) return;
         s->setNombre(eNombre->text().toStdString());
         s->setUbicacion(eUbicacion->text().toStdString());
         s->setTiempoIngreso(eTIngreso->value());
         s->setTiempoTraspaso(eTTraspaso->value());
         s->setTiempoDespacho(eTDespacho->value());
-
-        // Actualizar la lista
-        int row = listaSuc->currentRow();
-        listaSuc->item(row)->setText(
-            QString("[%1] %2").arg(id).arg(eNombre->text()));
-        QMessageBox::information(w, "Guardado",
-                                 "Sucursal actualizada correctamente.");
+        QMessageBox::information(w, "Guardado", "Sucursal actualizada.");
         emit redActualizada();
     });
 
-    // Agregar sucursal
     connect(btnAgregar, &QPushButton::clicked, [=]() {
         QDialog dlg(w);
+        dlg.setStyleSheet("QDialog { background: white; } "
+                          "QLabel { color: " + TEXTO_NEGRO + "; }");
         dlg.setWindowTitle("Nueva Sucursal");
         dlg.setFixedWidth(380);
         QFormLayout *fl = new QFormLayout(&dlg);
@@ -522,9 +726,12 @@ QWidget* MainWindow::crearTabSucursales() {
         QLineEdit *dId  = new QLineEdit(); dId->setMaxLength(10);
         QLineEdit *dNom = new QLineEdit();
         QLineEdit *dUbi = new QLineEdit();
-        QSpinBox  *dTI  = new QSpinBox(); dTI->setRange(0,9999); dTI->setValue(30); dTI->setSuffix(" s");
-        QSpinBox  *dTT  = new QSpinBox(); dTT->setRange(0,9999); dTT->setValue(45); dTT->setSuffix(" s");
-        QSpinBox  *dTD  = new QSpinBox(); dTD->setRange(0,9999); dTD->setValue(20); dTD->setSuffix(" s");
+        QSpinBox  *dTI  = new QSpinBox(); dTI->setRange(0, 9999); dTI->setValue(30); dTI->setSuffix(" s");
+        QSpinBox  *dTT  = new QSpinBox(); dTT->setRange(0, 9999); dTT->setValue(45); dTT->setSuffix(" s");
+        QSpinBox  *dTD  = new QSpinBox(); dTD->setRange(0, 9999); dTD->setValue(20); dTD->setSuffix(" s");
+        dId->setStyleSheet(cstyle); dNom->setStyleSheet(cstyle);
+        dUbi->setStyleSheet(cstyle); dTI->setStyleSheet(cstyle);
+        dTT->setStyleSheet(cstyle); dTD->setStyleSheet(cstyle);
 
         fl->addRow("ID (ej: SUC08):", dId);
         fl->addRow("Nombre:",         dNom);
@@ -545,14 +752,11 @@ QWidget* MainWindow::crearTabSucursales() {
                 return;
             }
             Sucursal *ns = new Sucursal(
-                dId->text().toStdString(),
-                dNom->text().toStdString(),
+                dId->text().toStdString(), dNom->text().toStdString(),
                 dUbi->text().toStdString(),
                 dTI->value(), dTT->value(), dTD->value());
             if (red->agregarSucursal(ns)) {
-                listaSuc->addItem(
-                    QString("[%1] %2").arg(dId->text()).arg(dNom->text()));
-                emit redActualizada();
+                emit redActualizada(); // dispara refresh en TODOS los tabs
             } else {
                 delete ns;
                 QMessageBox::warning(w, "Error", "Ya existe una sucursal con ese ID.");
@@ -560,55 +764,51 @@ QWidget* MainWindow::crearTabSucursales() {
         }
     });
 
-    // Eliminar sucursal
     connect(btnEliminar, &QPushButton::clicked, [=]() {
         int row = listaSuc->currentRow();
-        if (row < 0) { QMessageBox::information(w, "Info", "Selecciona una sucursal."); return; }
+        if (row < 0) {
+            QMessageBox::information(w, "Info", "Selecciona una sucursal."); return;
+        }
         auto suc = red->obtenerSucursales()[row];
         int r = QMessageBox::question(w, "Confirmar",
-                                      QString("¿Eliminar la sucursal '%1'?\nEsto eliminará también su inventario.")
+                                      QString("¿Eliminar '%1'? Se perderá su inventario y conexiones.")
                                           .arg(QString::fromStdString(suc->getNombre())));
         if (r == QMessageBox::Yes) {
-            QString id = QString::fromStdString(suc->getId());
-            red->eliminarSucursal(id.toStdString());
-            delete listaSuc->takeItem(row);
-            tblInv->setRowCount(0);
-            eId->clear(); eNombre->clear(); eUbicacion->clear();
-            btnGuardar->setEnabled(false);
+            red->eliminarSucursal(suc->getId());
             emit redActualizada();
         }
     });
 
-    // Seleccionar primera sucursal al iniciar
-    if (listaSuc->count() > 0) listaSuc->setCurrentRow(0);
+    // Auto-refresh cuando la red cambie (¡Aquí el fix del problema 3!)
+    connect(this, &MainWindow::redActualizada, refrescarLista);
+    refrescarLista();
+
     return w;
 }
 
 // ════════════════════════════════════════════════════════════
-// TAB 3 — RED (GRAFO)
+// TAB 3 — RED (con auto-refresh)
 // ════════════════════════════════════════════════════════════
 QWidget* MainWindow::crearTabRed() {
     QWidget *w = new QWidget();
+    w->setStyleSheet("background: white;");
     QHBoxLayout *lay = new QHBoxLayout(w);
     lay->setContentsMargins(12, 12, 12, 12);
     lay->setSpacing(12);
 
-    // Panel de controles izquierdo
     QWidget *panel = new QWidget();
     panel->setFixedWidth(260);
     QVBoxLayout *pLay = new QVBoxLayout(panel);
     pLay->setSpacing(10);
 
     QGroupBox *gbCtrl = new QGroupBox("Controles");
-    gbCtrl->setStyleSheet(
-        "QGroupBox { font-weight: bold; color: " + AZUL_OSCURO + ";"
-                                                                 " border: 1px solid " + GRIS_BORDE + "; border-radius: 6px; margin-top: 8px; }"
-                       "QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 4px; }");
+    gbCtrl->setStyleSheet(estiloGroupBox());
     QVBoxLayout *cLay = new QVBoxLayout(gbCtrl);
+    cLay->setContentsMargins(12, 16, 12, 12);
 
-    QPushButton *btnRedibujar = new QPushButton("↺  Redibujar grafo");
+    QPushButton *btnRedibujar  = new QPushButton("↺  Redibujar grafo");
     QPushButton *btnAgregarConn = new QPushButton("+  Nueva conexión");
-    QPushButton *btnElimConn  = new QPushButton("✕  Eliminar conexión");
+    QPushButton *btnElimConn   = new QPushButton("✕  Eliminar conexión");
     btnRedibujar->setStyleSheet(estiloBoton(AZUL_MEDIO));
     btnAgregarConn->setStyleSheet(estiloBoton(VERDE));
     btnElimConn->setStyleSheet(estiloBoton(ROJO));
@@ -617,145 +817,139 @@ QWidget* MainWindow::crearTabRed() {
     cLay->addWidget(btnElimConn);
     pLay->addWidget(gbCtrl);
 
-    // Lista de conexiones
     QGroupBox *gbConns = new QGroupBox("Conexiones");
-    gbConns->setStyleSheet(gbCtrl->styleSheet());
+    gbConns->setStyleSheet(estiloGroupBox());
     QVBoxLayout *connLay = new QVBoxLayout(gbConns);
+    connLay->setContentsMargins(12, 16, 12, 12);
     QListWidget *listaConns = new QListWidget();
-    listaConns->setStyleSheet(
-        "QListWidget::item { padding: 6px 8px; font-size: 11px;"
-        " border-bottom: 1px solid " + GRIS_BORDE + "; }"
-                       "QListWidget::item:selected { background: " + AZUL_CLARO + "; }");
-    for (const Conexion &c : red->obtenerConexiones()) {
-        listaConns->addItem(
-            QString("%1 → %2  t=%3s  Q%4")
-                .arg(QString::fromStdString(c.origenId))
-                .arg(QString::fromStdString(c.destinoId))
-                .arg(c.tiempo).arg(c.costo));
-    }
+    listaConns->setStyleSheet(estiloLista());
     connLay->addWidget(listaConns);
     pLay->addWidget(gbConns, 1);
     lay->addWidget(panel);
 
-    // Vista del grafo con QGraphicsScene
     QGraphicsScene *scene = new QGraphicsScene();
     scene->setBackgroundBrush(Qt::white);
     QGraphicsView *view = new QGraphicsView(scene);
     view->setRenderHint(QPainter::Antialiasing);
     view->setDragMode(QGraphicsView::ScrollHandDrag);
-    view->setStyleSheet("border: 1px solid " + GRIS_BORDE + ";");
+    view->setStyleSheet(QString("border: 1px solid %1; background: white;").arg(GRIS_BORDE));
+
+    auto refrescarLista = [=]() {
+        listaConns->clear();
+        for (const Conexion &c : red->obtenerConexiones()) {
+            listaConns->addItem(
+                QString("%1 → %2  t=%3s  Q%4")
+                    .arg(QString::fromStdString(c.origenId))
+                    .arg(QString::fromStdString(c.destinoId))
+                    .arg(c.tiempo).arg(c.costo));
+        }
+    };
 
     auto dibujarGrafo = [=]() {
         scene->clear();
         auto sucursales = red->obtenerSucursales();
         int n = (int)sucursales.size();
-        if (n == 0) return;
+        if (n == 0) {
+            QGraphicsTextItem *t = scene->addText(
+                "Red vacía. Carga sucursales desde el Tab Sistema.");
+            t->setFont(QFont("Arial", 12));
+            t->setDefaultTextColor(QColor("#888"));
+            return;
+        }
 
-        // Posicionar nodos en círculo
-        const double R = 260.0;
+        const double R = 240.0;
         const double cx = 320.0, cy = 280.0;
-        QMap<QString, QPointF> posiciones;
-
+        QMap<QString, QPointF> pos;
         for (int i = 0; i < n; i++) {
             double ang = 2.0 * M_PI * i / n - M_PI / 2.0;
-            double x = cx + R * std::cos(ang);
-            double y = cy + R * std::sin(ang);
-            posiciones[QString::fromStdString(sucursales[i]->getId())] = {x, y};
+            pos[QString::fromStdString(sucursales[i]->getId())] =
+                QPointF(cx + R * std::cos(ang), cy + R * std::sin(ang));
         }
 
-        // Dibujar aristas
+        // Aristas
         for (const Conexion &c : red->obtenerConexiones()) {
-            QPointF p1 = posiciones[QString::fromStdString(c.origenId)];
-            QPointF p2 = posiciones[QString::fromStdString(c.destinoId)];
-
-            QGraphicsLineItem *linea = scene->addLine(
-                p1.x(), p1.y(), p2.x(), p2.y(),
-                QPen(QColor("#90A4AE"), 2));
-            linea->setZValue(0);
-
-            // Etiqueta de peso en el punto medio
+            QPointF p1 = pos[QString::fromStdString(c.origenId)];
+            QPointF p2 = pos[QString::fromStdString(c.destinoId)];
+            scene->addLine(p1.x(), p1.y(), p2.x(), p2.y(),
+                           QPen(QColor("#90A4AE"), 2));
             QPointF mid = (p1 + p2) / 2.0;
             QGraphicsTextItem *etq = scene->addText(
-                QString("t=%1s\nQ%2").arg(c.tiempo).arg(c.costo));
+                QString("t=%1s  Q%2").arg(c.tiempo).arg(c.costo));
             etq->setFont(QFont("Arial", 8));
-            etq->setDefaultTextColor(QColor("#455A64"));
-            etq->setPos(mid.x() - 20, mid.y() - 12);
-            etq->setZValue(1);
+            etq->setDefaultTextColor(QColor("#37474F"));
+            etq->setPos(mid.x() - 30, mid.y() - 12);
         }
 
-        // Dibujar nodos
-        const double R_nodo = 36.0;
+        // Nodos
+        const double Rn = 36.0;
         for (Sucursal *s : sucursales) {
-            QPointF pos = posiciones[QString::fromStdString(s->getId())];
-            double x = pos.x() - R_nodo;
-            double y = pos.y() - R_nodo;
+            QPointF p = pos[QString::fromStdString(s->getId())];
+            scene->addEllipse(p.x() - Rn, p.y() - Rn, Rn * 2, Rn * 2,
+                              QPen(QColor(AZUL_OSCURO), 2), QBrush(QColor(AZUL_CLARO)));
 
-            QGraphicsEllipseItem *nodo = scene->addEllipse(
-                x, y, R_nodo * 2, R_nodo * 2,
-                QPen(QColor(AZUL_OSCURO), 2),
-                QBrush(QColor(AZUL_CLARO)));
-            nodo->setZValue(2);
+            QGraphicsTextItem *ti = scene->addText(QString::fromStdString(s->getId()));
+            ti->setFont(QFont("Arial", 10, QFont::Bold));
+            ti->setDefaultTextColor(QColor(AZUL_OSCURO));
+            ti->setPos(p.x() - ti->boundingRect().width()/2,
+                       p.y() - ti->boundingRect().height()/2 - 5);
 
-            // ID de la sucursal
-            QGraphicsTextItem *txtId = scene->addText(
-                QString::fromStdString(s->getId()));
-            txtId->setFont(QFont("Arial", 10, QFont::Bold));
-            txtId->setDefaultTextColor(QColor(AZUL_OSCURO));
-            QRectF tbr = txtId->boundingRect();
-            txtId->setPos(pos.x() - tbr.width()/2, pos.y() - tbr.height()/2 - 5);
-            txtId->setZValue(3);
-
-            // Cantidad de productos
-            QGraphicsTextItem *txtProd = scene->addText(
+            QGraphicsTextItem *tp = scene->addText(
                 QString("%1 prods").arg(s->contarProductos()));
-            txtProd->setFont(QFont("Arial", 8));
-            txtProd->setDefaultTextColor(QColor("#37474F"));
-            QRectF pbr = txtProd->boundingRect();
-            txtProd->setPos(pos.x() - pbr.width()/2, pos.y() + 6);
-            txtProd->setZValue(3);
+            tp->setFont(QFont("Arial", 8));
+            tp->setDefaultTextColor(QColor("#37474F"));
+            tp->setPos(p.x() - tp->boundingRect().width()/2, p.y() + 6);
 
-            // Nombre debajo del nodo
-            QGraphicsTextItem *txtNom = scene->addText(
-                QString::fromStdString(s->getNombre()));
-            txtNom->setFont(QFont("Arial", 9));
-            txtNom->setDefaultTextColor(QColor("#263238"));
-            QRectF nbr = txtNom->boundingRect();
-            txtNom->setPos(pos.x() - nbr.width()/2, pos.y() + R_nodo + 4);
-            txtNom->setZValue(3);
+            QGraphicsTextItem *tn = scene->addText(QString::fromStdString(s->getNombre()));
+            tn->setFont(QFont("Arial", 9));
+            tn->setDefaultTextColor(QColor("#263238"));
+            tn->setPos(p.x() - tn->boundingRect().width()/2, p.y() + Rn + 4);
         }
-        view->fitInView(scene->sceneRect().adjusted(-40,-40,40,40),
+        view->fitInView(scene->sceneRect().adjusted(-40, -40, 40, 40),
                         Qt::KeepAspectRatio);
     };
 
     connect(btnRedibujar, &QPushButton::clicked, dibujarGrafo);
 
-    // Agregar conexión
     connect(btnAgregarConn, &QPushButton::clicked, [=]() {
+        if (red->contarSucursales() < 2) {
+            QMessageBox::warning(w, "Atención",
+                                 "Necesitas al menos 2 sucursales para crear una conexión.");
+            return;
+        }
         QDialog dlg(w);
+        dlg.setStyleSheet("QDialog { background: white; } "
+                          "QLabel { color: " + TEXTO_NEGRO + "; }");
         dlg.setWindowTitle("Nueva Conexión");
-        dlg.setFixedWidth(340);
+        dlg.setFixedWidth(360);
         QFormLayout *fl = new QFormLayout(&dlg);
         fl->setContentsMargins(20, 20, 20, 20);
 
-        QComboBox *cOrigen  = new QComboBox();
+        QString cstyle = estiloCampo();
+        QComboBox *cOrigen = new QComboBox();
         QComboBox *cDestino = new QComboBox();
         for (Sucursal *s : red->obtenerSucursales()) {
-            QString label = QString::fromStdString(s->getId() + " — " + s->getNombre());
-            cOrigen->addItem(label, QString::fromStdString(s->getId()));
-            cDestino->addItem(label, QString::fromStdString(s->getId()));
+            QString lbl = QString::fromStdString(s->getId() + " — " + s->getNombre());
+            cOrigen->addItem(lbl, QString::fromStdString(s->getId()));
+            cDestino->addItem(lbl, QString::fromStdString(s->getId()));
         }
-        QDoubleSpinBox *dTiempo = new QDoubleSpinBox();
-        dTiempo->setRange(1, 9999); dTiempo->setValue(30); dTiempo->setSuffix(" s");
-        QDoubleSpinBox *dCosto  = new QDoubleSpinBox();
-        dCosto->setRange(0.01, 9999); dCosto->setValue(15); dCosto->setPrefix("Q ");
+        if (cDestino->count() > 1) cDestino->setCurrentIndex(1);
+        cOrigen->setStyleSheet(cstyle); cDestino->setStyleSheet(cstyle);
+
+        QDoubleSpinBox *dT = new QDoubleSpinBox();
+        dT->setRange(1, 9999); dT->setValue(30); dT->setSuffix(" s");
+        QDoubleSpinBox *dC = new QDoubleSpinBox();
+        dC->setRange(0.01, 9999); dC->setValue(15); dC->setPrefix("Q ");
+        dT->setStyleSheet(cstyle); dC->setStyleSheet(cstyle);
+
         QCheckBox *chkBi = new QCheckBox("Bidireccional");
         chkBi->setChecked(true);
+        chkBi->setStyleSheet(QString("color: %1;").arg(TEXTO_NEGRO));
 
-        fl->addRow("Origen:",        cOrigen);
-        fl->addRow("Destino:",       cDestino);
-        fl->addRow("Tiempo:",        dTiempo);
-        fl->addRow("Costo:",         dCosto);
-        fl->addRow("",               chkBi);
+        fl->addRow("Origen:",   cOrigen);
+        fl->addRow("Destino:",  cDestino);
+        fl->addRow("Tiempo:",   dT);
+        fl->addRow("Costo:",    dC);
+        fl->addRow("",          chkBi);
 
         QDialogButtonBox *bb = new QDialogButtonBox(
             QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
@@ -764,83 +958,68 @@ QWidget* MainWindow::crearTabRed() {
         connect(bb, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
 
         if (dlg.exec() == QDialog::Accepted) {
-            QString orig = cOrigen->currentData().toString();
-            QString dest = cDestino->currentData().toString();
-            if (orig == dest) {
-                QMessageBox::warning(w, "Error", "Origen y destino deben ser distintos.");
-                return;
-            }
-            if (red->agregarConexion(orig.toStdString(), dest.toStdString(),
-                                     dTiempo->value(), dCosto->value(),
-                                     chkBi->isChecked())) {
-                listaConns->addItem(
-                    QString("%1 → %2  t=%3s  Q%4")
-                        .arg(orig).arg(dest)
-                        .arg(dTiempo->value()).arg(dCosto->value()));
-                dibujarGrafo();
+            QString o = cOrigen->currentData().toString();
+            QString d = cDestino->currentData().toString();
+            if (o == d) { QMessageBox::warning(w, "Error",
+                                     "Origen y destino deben ser distintos."); return; }
+            if (red->agregarConexion(o.toStdString(), d.toStdString(),
+                                     dT->value(), dC->value(), chkBi->isChecked())) {
                 emit redActualizada();
-            } else {
-                QMessageBox::warning(w, "Error", "No se pudo agregar la conexión.");
             }
         }
     });
 
-    // Eliminar conexión seleccionada
     connect(btnElimConn, &QPushButton::clicked, [=]() {
         int row = listaConns->currentRow();
         if (row < 0) {
             QMessageBox::information(w, "Info", "Selecciona una conexión."); return;
         }
         QString texto = listaConns->item(row)->text();
-        QString orig  = texto.split(" → ")[0].trimmed();
-        QString dest  = texto.split(" → ")[1].split(" ")[0].trimmed();
-        if (red->eliminarConexion(orig.toStdString(), dest.toStdString())) {
-            delete listaConns->takeItem(row);
-            dibujarGrafo();
+        QString o = texto.split(" → ")[0].trimmed();
+        QString d = texto.split(" → ")[1].split("  ")[0].trimmed();
+        if (red->eliminarConexion(o.toStdString(), d.toStdString())) {
             emit redActualizada();
         }
     });
 
     lay->addWidget(view, 1);
 
-    // Dibujar al crear el tab
-    QTimer::singleShot(100, dibujarGrafo);
+    // Auto-refresh
+    connect(this, &MainWindow::redActualizada, [=]() {
+        refrescarLista();
+        dibujarGrafo();
+    });
+    refrescarLista();
+    QTimer::singleShot(150, dibujarGrafo);
     return w;
 }
 
 // ════════════════════════════════════════════════════════════
-// TAB 4 — INVENTARIO
+// TAB 4 — INVENTARIO (con auto-refresh)
 // ════════════════════════════════════════════════════════════
 QWidget* MainWindow::crearTabInventario() {
     QWidget *w = new QWidget();
+    w->setStyleSheet("background: white;");
     QVBoxLayout *lay = new QVBoxLayout(w);
     lay->setContentsMargins(12, 12, 12, 12);
     lay->setSpacing(10);
 
-    // Barra de búsqueda superior
+    QString cstyle = estiloCampo();
+
     QHBoxLayout *buscLay = new QHBoxLayout();
     QComboBox *cmbSucursal = new QComboBox();
     cmbSucursal->setFixedWidth(220);
-    cmbSucursal->setStyleSheet(
-        "padding: 6px 8px; border: 1px solid " + GRIS_BORDE + ";"
-                                                              " border-radius: 4px; font-size: 12px;");
-    cmbSucursal->addItem("— Todas las sucursales —", "ALL");
-    for (Sucursal *s : red->obtenerSucursales())
-        cmbSucursal->addItem(
-            QString::fromStdString(s->getId() + " — " + s->getNombre()),
-            QString::fromStdString(s->getId()));
-
+    cmbSucursal->setStyleSheet(cstyle);
     QLineEdit *buscar = new QLineEdit();
-    buscar->setPlaceholderText("Buscar por nombre o código de barra...");
-    buscar->setStyleSheet(
-        "padding: 6px 10px; border: 1px solid " + GRIS_BORDE + ";"
-                                                               " border-radius: 4px; font-size: 12px;");
-
+    buscar->setPlaceholderText("Nombre, código, categoría o fechas (YYYY-MM-DD / YYYY-MM-DD)...");
+    buscar->setStyleSheet(cstyle);
     QComboBox *cmbCriterio = new QComboBox();
-    cmbCriterio->addItems({"Por nombre (AVL)", "Por código (Hash)",
-                           "Por categoría (B+)", "Por fecha rango (B)"});
-    cmbCriterio->setFixedWidth(200);
-    cmbCriterio->setStyleSheet(cmbSucursal->styleSheet());
+    cmbCriterio->addItems({"Por nombre (AVL)",
+                           "Por código (Hash)",
+                           "Por categoría (B+)",
+                           "Por rango de fecha (B)"});
+    cmbCriterio->setFixedWidth(220);
+    cmbCriterio->setStyleSheet(cstyle);
 
     QPushButton *btnBuscar   = new QPushButton("Buscar");
     QPushButton *btnAgregar  = new QPushButton("+ Agregar");
@@ -857,140 +1036,258 @@ QWidget* MainWindow::crearTabInventario() {
     buscLay->addWidget(btnEliminar);
     lay->addLayout(buscLay);
 
-    // Tabla de resultados
     QTableWidget *tbl = new QTableWidget();
     tbl->setColumnCount(8);
     tbl->setHorizontalHeaderLabels(
-        {"Sucursal","Nombre","Código","Categoría",
-         "Caducidad","Marca","Precio Q","Stock"});
+        {"Sucursal", "Nombre", "Código", "Categoría",
+         "Caducidad", "Marca", "Precio Q", "Stock"});
     tbl->horizontalHeader()->setStretchLastSection(true);
     tbl->horizontalHeader()->setStyleSheet(estiloHeader());
     tbl->setSelectionBehavior(QAbstractItemView::SelectRows);
     tbl->setEditTriggers(QAbstractItemView::NoEditTriggers);
     tbl->setAlternatingRowColors(true);
+    tbl->setStyleSheet(estiloTabla());
     tbl->verticalHeader()->setVisible(false);
-    tbl->setStyleSheet("alternate-background-color: " + GRIS_CLARO + ";");
     lay->addWidget(tbl, 1);
 
-    // Contador de resultados
-    QLabel *lblConteo = new QLabel("Mostrando todos los productos");
-    lblConteo->setStyleSheet("color: #555; font-size: 11px; padding: 2px 4px;");
+    QLabel *lblConteo = new QLabel("Sin productos");
+    lblConteo->setStyleSheet(QString("color: %1; font-size: 11px;").arg(TEXTO_NEGRO));
     lay->addWidget(lblConteo);
 
-    // ── Función para cargar todos los productos ───────────────
+    auto refrescarCombo = [=]() {
+        QString prev = cmbSucursal->currentData().toString();
+        cmbSucursal->clear();
+        cmbSucursal->addItem("— Todas las sucursales —", "ALL");
+        for (Sucursal *s : red->obtenerSucursales())
+            cmbSucursal->addItem(
+                QString::fromStdString(s->getId() + " — " + s->getNombre()),
+                QString::fromStdString(s->getId()));
+        if (!prev.isEmpty()) {
+            for (int i = 0; i < cmbSucursal->count(); i++) {
+                if (cmbSucursal->itemData(i).toString() == prev) {
+                    cmbSucursal->setCurrentIndex(i); break;
+                }
+            }
+        }
+    };
+
     auto cargarTodos = [=]() {
         tbl->setRowCount(0);
+        QString filtro = cmbSucursal->currentData().toString();
         int fila = 0;
-        QString filtroSuc = cmbSucursal->currentData().toString();
 
-        struct AVLWalker {
-            static void walk(NodoAVL *n, QTableWidget *t,
-                             int &r, const QString &sucId) {
+        struct Walker {
+            static void walk(NodoAVL *n, QTableWidget *t, int &r,
+                             const std::string &sucId, const QString &filtro) {
                 if (!n) return;
-                walk(n->izquierda, t, r, sucId);
+                walk(n->izquierda, t, r, sucId, filtro);
                 Producto &p = n->dato;
-                if (sucId == "ALL" ||
-                    QString::fromStdString(p.sucursalId) == sucId) {
+                if (filtro == "ALL" ||
+                    QString::fromStdString(p.sucursalId) == filtro) {
+                    auto mk = [](const QString &v) {
+                        QTableWidgetItem *it = new QTableWidgetItem(v);
+                        it->setForeground(QColor(TEXTO_NEGRO));
+                        return it;
+                    };
                     t->setRowCount(r + 1);
-                    t->setItem(r,0,new QTableWidgetItem(
-                                         QString::fromStdString(p.sucursalId)));
-                    t->setItem(r,1,new QTableWidgetItem(
-                                         QString::fromStdString(p.nombre)));
-                    t->setItem(r,2,new QTableWidgetItem(
-                                         QString::fromStdString(p.codigoBarra)));
-                    t->setItem(r,3,new QTableWidgetItem(
-                                         QString::fromStdString(p.categoria)));
-                    t->setItem(r,4,new QTableWidgetItem(
-                                         QString::fromStdString(p.fechaCaducidad)));
-                    t->setItem(r,5,new QTableWidgetItem(
-                                         QString::fromStdString(p.marca)));
-                    t->setItem(r,6,new QTableWidgetItem(
-                                         QString("Q%1").arg(p.precio,0,'f',2)));
-                    t->setItem(r,7,new QTableWidgetItem(
-                                         QString::number(p.stock)));
+                    t->setItem(r, 0, mk(QString::fromStdString(p.sucursalId)));
+                    t->setItem(r, 1, mk(QString::fromStdString(p.nombre)));
+                    t->setItem(r, 2, mk(QString::fromStdString(p.codigoBarra)));
+                    t->setItem(r, 3, mk(QString::fromStdString(p.categoria)));
+                    t->setItem(r, 4, mk(QString::fromStdString(p.fechaCaducidad)));
+                    t->setItem(r, 5, mk(QString::fromStdString(p.marca)));
+                    t->setItem(r, 6, mk(QString("Q%1").arg(p.precio, 0, 'f', 2)));
+                    t->setItem(r, 7, mk(QString::number(p.stock)));
                     r++;
                 }
-                walk(n->derecha, t, r, sucId);
+                walk(n->derecha, t, r, sucId, filtro);
             }
         };
 
         for (Sucursal *s : red->obtenerSucursales()) {
-            if (filtroSuc != "ALL" &&
-                QString::fromStdString(s->getId()) != filtroSuc) continue;
-            AVLWalker::walk(
-                s->getCatalogo()->obtenerArbolAVL()->obtenerRaiz(),
-                tbl, fila, filtroSuc);
+            if (filtro != "ALL" &&
+                QString::fromStdString(s->getId()) != filtro) continue;
+            Walker::walk(s->getCatalogo()->obtenerArbolAVL()->obtenerRaiz(),
+                         tbl, fila, s->getId(), filtro);
         }
         tbl->resizeColumnsToContents();
         lblConteo->setText(QString("Mostrando %1 productos").arg(tbl->rowCount()));
     };
 
-    cargarTodos();
+    connect(cmbSucursal, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            [=](int) { cargarTodos(); });
 
-    // ── Búsqueda por criterio ─────────────────────────────────
+    // Helper para agregar una fila a la tabla de resultados
+    auto agregarFila = [=](int &fila, const QString &sucId, Producto *p) {
+        if (!p) return;
+        auto mk = [](const QString &v) {
+            QTableWidgetItem *it = new QTableWidgetItem(v);
+            it->setForeground(QColor(TEXTO_NEGRO));
+            return it;
+        };
+        tbl->setRowCount(fila + 1);
+        tbl->setItem(fila, 0, mk(sucId));
+        tbl->setItem(fila, 1, mk(QString::fromStdString(p->nombre)));
+        tbl->setItem(fila, 2, mk(QString::fromStdString(p->codigoBarra)));
+        tbl->setItem(fila, 3, mk(QString::fromStdString(p->categoria)));
+        tbl->setItem(fila, 4, mk(QString::fromStdString(p->fechaCaducidad)));
+        tbl->setItem(fila, 5, mk(QString::fromStdString(p->marca)));
+        tbl->setItem(fila, 6, mk(QString("Q%1").arg(p->precio, 0, 'f', 2)));
+        tbl->setItem(fila, 7, mk(QString::number(p->stock)));
+        fila++;
+    };
+
     connect(btnBuscar, &QPushButton::clicked, [=]() {
         QString texto = buscar->text().trimmed();
         if (texto.isEmpty()) { cargarTodos(); return; }
 
-        int criterio = cmbCriterio->currentIndex();
-        QString filtroSuc = cmbSucursal->currentData().toString();
+        int     crit   = cmbCriterio->currentIndex();
+        QString filtro = cmbSucursal->currentData().toString();
         tbl->setRowCount(0);
         int fila = 0;
 
-        for (Sucursal *s : red->obtenerSucursales()) {
-            if (filtroSuc != "ALL" &&
-                QString::fromStdString(s->getId()) != filtroSuc) continue;
-
-            Catalogo *cat = s->getCatalogo();
-            Producto *p = nullptr;
-
-            if (criterio == 0) {        // AVL
-                p = cat->buscarPorNombre(texto.toStdString());
-            } else if (criterio == 1) { // Hash
-                p = cat->buscarPorCodigo(texto.toStdString());
-            }
-
-            if (p) {
-                tbl->setRowCount(fila + 1);
-                tbl->setItem(fila,0,new QTableWidgetItem(QString::fromStdString(s->getId())));
-                tbl->setItem(fila,1,new QTableWidgetItem(QString::fromStdString(p->nombre)));
-                tbl->setItem(fila,2,new QTableWidgetItem(QString::fromStdString(p->codigoBarra)));
-                tbl->setItem(fila,3,new QTableWidgetItem(QString::fromStdString(p->categoria)));
-                tbl->setItem(fila,4,new QTableWidgetItem(QString::fromStdString(p->fechaCaducidad)));
-                tbl->setItem(fila,5,new QTableWidgetItem(QString::fromStdString(p->marca)));
-                tbl->setItem(fila,6,new QTableWidgetItem(
-                                          QString("Q%1").arg(p->precio,0,'f',2)));
-                tbl->setItem(fila,7,new QTableWidgetItem(QString::number(p->stock)));
-                fila++;
+        // ── Criterio 0: Nombre exacto — AVL O(log n) ─────────
+        if (crit == 0) {
+            for (Sucursal *s : red->obtenerSucursales()) {
+                if (filtro != "ALL" &&
+                    QString::fromStdString(s->getId()) != filtro) continue;
+                Producto *p = s->getCatalogo()->buscarPorNombre(texto.toStdString());
+                agregarFila(fila, QString::fromStdString(s->getId()), p);
             }
         }
+        // ── Criterio 1: Código de barra — Hash O(1) ──────────
+        else if (crit == 1) {
+            for (Sucursal *s : red->obtenerSucursales()) {
+                if (filtro != "ALL" &&
+                    QString::fromStdString(s->getId()) != filtro) continue;
+                Producto *p = s->getCatalogo()->buscarPorCodigo(texto.toStdString());
+                agregarFila(fila, QString::fromStdString(s->getId()), p);
+            }
+        }
+        // ── Criterio 2: Categoría — Árbol B+ O(log n + k) ────
+        else if (crit == 2) {
+            // El B+ devuelve múltiples productos — los recogemos via Walker en AVL
+            // filtrando por categoría (más directo que capturar stdout del B+)
+            struct CatWalker {
+                static void walk(NodoAVL *n, const std::string &cat,
+                                 QTableWidget *t, int &r,
+                                 const QString &sucId) {
+                    if (!n) return;
+                    walk(n->izquierda, cat, t, r, sucId);
+                    if (n->dato.categoria == cat) {
+                        auto mk = [](const QString &v) {
+                            QTableWidgetItem *it = new QTableWidgetItem(v);
+                            it->setForeground(QColor(TEXTO_NEGRO));
+                            return it;
+                        };
+                        Producto &p = n->dato;
+                        t->setRowCount(r + 1);
+                        t->setItem(r, 0, mk(sucId));
+                        t->setItem(r, 1, mk(QString::fromStdString(p.nombre)));
+                        t->setItem(r, 2, mk(QString::fromStdString(p.codigoBarra)));
+                        t->setItem(r, 3, mk(QString::fromStdString(p.categoria)));
+                        t->setItem(r, 4, mk(QString::fromStdString(p.fechaCaducidad)));
+                        t->setItem(r, 5, mk(QString::fromStdString(p.marca)));
+                        t->setItem(r, 6, mk(QString("Q%1").arg(p.precio, 0, 'f', 2)));
+                        t->setItem(r, 7, mk(QString::number(p.stock)));
+                        r++;
+                    }
+                    walk(n->derecha, cat, t, r, sucId);
+                }
+            };
+            for (Sucursal *s : red->obtenerSucursales()) {
+                if (filtro != "ALL" &&
+                    QString::fromStdString(s->getId()) != filtro) continue;
+                CatWalker::walk(
+                    s->getCatalogo()->obtenerArbolAVL()->obtenerRaiz(),
+                    texto.toStdString(), tbl, fila,
+                    QString::fromStdString(s->getId()));
+            }
+        }
+        // ── Criterio 3: Rango de fechas — Árbol B O(log n + k)
+        else if (crit == 3) {
+            // Formato esperado: "YYYY-MM-DD / YYYY-MM-DD"
+            QStringList partes = texto.split("/");
+            if (partes.size() != 2) {
+                lblConteo->setText(
+                    "[!] Formato: YYYY-MM-DD / YYYY-MM-DD");
+                return;
+            }
+            QString ini = partes[0].trimmed();
+            QString fin = partes[1].trimmed();
+            if (ini > fin) {
+                lblConteo->setText("[!] La fecha inicio debe ser ≤ fecha fin.");
+                return;
+            }
+            // Recorremos el AVL filtrando por rango de fechas
+            struct FechaWalker {
+                static void walk(NodoAVL *n, const std::string &ini,
+                                 const std::string &fin,
+                                 QTableWidget *t, int &r,
+                                 const QString &sucId) {
+                    if (!n) return;
+                    walk(n->izquierda, ini, fin, t, r, sucId);
+                    if (n->dato.fechaCaducidad >= ini &&
+                        n->dato.fechaCaducidad <= fin) {
+                        auto mk = [](const QString &v) {
+                            QTableWidgetItem *it = new QTableWidgetItem(v);
+                            it->setForeground(QColor(TEXTO_NEGRO));
+                            return it;
+                        };
+                        Producto &p = n->dato;
+                        t->setRowCount(r + 1);
+                        t->setItem(r, 0, mk(sucId));
+                        t->setItem(r, 1, mk(QString::fromStdString(p.nombre)));
+                        t->setItem(r, 2, mk(QString::fromStdString(p.codigoBarra)));
+                        t->setItem(r, 3, mk(QString::fromStdString(p.categoria)));
+                        t->setItem(r, 4, mk(QString::fromStdString(p.fechaCaducidad)));
+                        t->setItem(r, 5, mk(QString::fromStdString(p.marca)));
+                        t->setItem(r, 6, mk(QString("Q%1").arg(p.precio, 0, 'f', 2)));
+                        t->setItem(r, 7, mk(QString::number(p.stock)));
+                        r++;
+                    }
+                    walk(n->derecha, ini, fin, t, r, sucId);
+                }
+            };
+            for (Sucursal *s : red->obtenerSucursales()) {
+                if (filtro != "ALL" &&
+                    QString::fromStdString(s->getId()) != filtro) continue;
+                FechaWalker::walk(
+                    s->getCatalogo()->obtenerArbolAVL()->obtenerRaiz(),
+                    ini.toStdString(), fin.toStdString(),
+                    tbl, fila, QString::fromStdString(s->getId()));
+            }
+        }
+
         tbl->resizeColumnsToContents();
-        lblConteo->setText(
-            fila == 0
-                ? "Sin resultados"
-                : QString("%1 resultado(s) encontrado(s)").arg(fila));
+        lblConteo->setText(fila == 0
+                               ? "Sin resultados"
+                               : QString("%1 resultado(s) — estructura: %2").arg(fila)
+                                     .arg(QStringList{"AVL","Hash","B+","B"}[crit]));
     });
 
     connect(buscar, &QLineEdit::returnPressed, btnBuscar, &QPushButton::click);
-    connect(cmbSucursal, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            [=](int) { cargarTodos(); });
 
-    // ── Agregar producto ──────────────────────────────────────
     connect(btnAgregar, &QPushButton::clicked, [=]() {
+        if (red->contarSucursales() == 0) {
+            QMessageBox::warning(w, "Atención",
+                                 "Crea al menos una sucursal antes de agregar productos.");
+            return;
+        }
         QDialog dlg(w);
+        dlg.setStyleSheet("QDialog { background: white; } "
+                          "QLabel { color: " + TEXTO_NEGRO + "; }");
         dlg.setWindowTitle("Agregar Producto");
-        dlg.setFixedWidth(400);
+        dlg.setFixedWidth(420);
         QFormLayout *fl = new QFormLayout(&dlg);
         fl->setContentsMargins(20, 20, 20, 20);
         fl->setSpacing(10);
 
-        QComboBox *dSuc  = new QComboBox();
+        QString cs = estiloCampo();
+        QComboBox *dSuc = new QComboBox();
         for (Sucursal *s : red->obtenerSucursales())
-            dSuc->addItem(
-                QString::fromStdString(s->getId() + " — " + s->getNombre()),
-                QString::fromStdString(s->getId()));
-
-        // Preseleccionar la sucursal del filtro actual
+            dSuc->addItem(QString::fromStdString(s->getId() + " — " + s->getNombre()),
+                          QString::fromStdString(s->getId()));
         QString cur = cmbSucursal->currentData().toString();
         if (cur != "ALL") {
             for (int i = 0; i < dSuc->count(); i++) {
@@ -999,25 +1296,29 @@ QWidget* MainWindow::crearTabInventario() {
                 }
             }
         }
-
-        QLineEdit *dNom  = new QLineEdit();
-        QLineEdit *dCod  = new QLineEdit(); dCod->setMaxLength(10);
+        QLineEdit *dNom = new QLineEdit();
+        QLineEdit *dCod = new QLineEdit(); dCod->setMaxLength(10);
         dCod->setPlaceholderText("Exactamente 10 dígitos");
-        QLineEdit *dCat  = new QLineEdit();
-        QLineEdit *dFec  = new QLineEdit(); dFec->setPlaceholderText("YYYY-MM-DD");
-        QLineEdit *dMar  = new QLineEdit();
+        QLineEdit *dCat = new QLineEdit();
+        QLineEdit *dFec = new QLineEdit(); dFec->setPlaceholderText("YYYY-MM-DD");
+        QLineEdit *dMar = new QLineEdit();
         QDoubleSpinBox *dPre = new QDoubleSpinBox();
-        dPre->setRange(0,99999); dPre->setPrefix("Q "); dPre->setDecimals(2);
-        QSpinBox *dSto = new QSpinBox(); dSto->setRange(0,99999);
+        dPre->setRange(0, 99999); dPre->setPrefix("Q "); dPre->setDecimals(2);
+        QSpinBox *dSto = new QSpinBox(); dSto->setRange(0, 99999);
 
-        fl->addRow("Sucursal:",      dSuc);
-        fl->addRow("Nombre:",        dNom);
-        fl->addRow("Código (10):",   dCod);
-        fl->addRow("Categoría:",     dCat);
-        fl->addRow("Caducidad:",     dFec);
-        fl->addRow("Marca:",         dMar);
-        fl->addRow("Precio:",        dPre);
-        fl->addRow("Stock:",         dSto);
+        for (auto *wid : {(QWidget*)dSuc, (QWidget*)dNom, (QWidget*)dCod,
+                          (QWidget*)dCat, (QWidget*)dFec, (QWidget*)dMar,
+                          (QWidget*)dPre, (QWidget*)dSto})
+            wid->setStyleSheet(cs);
+
+        fl->addRow("Sucursal:",     dSuc);
+        fl->addRow("Nombre:",       dNom);
+        fl->addRow("Código (10):",  dCod);
+        fl->addRow("Categoría:",    dCat);
+        fl->addRow("Caducidad:",    dFec);
+        fl->addRow("Marca:",        dMar);
+        fl->addRow("Precio:",       dPre);
+        fl->addRow("Stock:",        dSto);
 
         QDialogButtonBox *bb = new QDialogButtonBox(
             QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
@@ -1027,264 +1328,254 @@ QWidget* MainWindow::crearTabInventario() {
 
         if (dlg.exec() == QDialog::Accepted) {
             if (dCod->text().length() != 10) {
-                QMessageBox::warning(w,"Error","El código debe tener exactamente 10 dígitos.");
+                QMessageBox::warning(w, "Error",
+                                     "El código debe tener exactamente 10 dígitos.");
                 return;
             }
             QString sucId = dSuc->currentData().toString();
             Sucursal *s = red->buscarSucursal(sucId.toStdString());
             if (!s) return;
-
-            Producto p(dNom->text().toStdString(),
-                       dCod->text().toStdString(),
-                       dCat->text().toStdString(),
-                       dFec->text().toStdString(),
+            Producto p(dNom->text().toStdString(), dCod->text().toStdString(),
+                       dCat->text().toStdString(), dFec->text().toStdString(),
                        dMar->text().toStdString(),
-                       dPre->value(), dSto->value(),
-                       sucId.toStdString());
+                       dPre->value(), dSto->value(), sucId.toStdString());
             if (s->agregarProducto(p)) {
-                cargarTodos();
                 emit redActualizada();
-                QMessageBox::information(w,"OK",
+                QMessageBox::information(w, "OK",
                                          QString("Producto '%1' agregado.").arg(dNom->text()));
             } else {
-                QMessageBox::warning(w,"Error","No se pudo agregar el producto.");
+                QMessageBox::warning(w, "Error", "No se pudo agregar el producto.");
             }
         }
     });
 
-    // ── Eliminar producto seleccionado ────────────────────────
     connect(btnEliminar, &QPushButton::clicked, [=]() {
         int row = tbl->currentRow();
         if (row < 0) {
-            QMessageBox::information(w,"Info","Selecciona un producto."); return;
+            QMessageBox::information(w, "Info", "Selecciona un producto."); return;
         }
-        QString sucId  = tbl->item(row,0)->text();
-        QString nombre = tbl->item(row,1)->text();
-        QString codigo = tbl->item(row,2)->text();
-        QString cat    = tbl->item(row,3)->text();
-        QString fecha  = tbl->item(row,4)->text();
+        QString sucId  = tbl->item(row, 0)->text();
+        QString nombre = tbl->item(row, 1)->text();
+        QString codigo = tbl->item(row, 2)->text();
+        QString cat    = tbl->item(row, 3)->text();
+        QString fecha  = tbl->item(row, 4)->text();
 
-        int r = QMessageBox::question(w,"Confirmar",
-                                      QString("¿Eliminar '%1' de sucursal %2?").arg(nombre).arg(sucId));
+        int r = QMessageBox::question(w, "Confirmar",
+                                      QString("¿Eliminar '%1' de %2?").arg(nombre).arg(sucId));
         if (r == QMessageBox::Yes) {
             Sucursal *s = red->buscarSucursal(sucId.toStdString());
-            if (s && s->eliminarProducto(nombre.toStdString(),
-                                         codigo.toStdString(),
-                                         cat.toStdString(),
-                                         fecha.toStdString())) {
-                cargarTodos();
+            if (s && s->eliminarProducto(nombre.toStdString(), codigo.toStdString(),
+                                         cat.toStdString(), fecha.toStdString())) {
                 emit redActualizada();
-            } else {
-                QMessageBox::warning(w,"Error","No se pudo eliminar.");
             }
         }
     });
 
+    // Auto-refresh
+    connect(this, &MainWindow::redActualizada, [=]() {
+        refrescarCombo();
+        cargarTodos();
+    });
+    refrescarCombo();
+    cargarTodos();
     return w;
 }
 
 // ════════════════════════════════════════════════════════════
-// TAB 5 — TRANSFERENCIA
+// TAB 5 — TRANSFERENCIA (con auto-refresh de combos)
 // ════════════════════════════════════════════════════════════
 QWidget* MainWindow::crearTabTransferencia() {
     QWidget *w = new QWidget();
+    w->setStyleSheet("background: white;");
     QHBoxLayout *lay = new QHBoxLayout(w);
     lay->setContentsMargins(12, 12, 12, 12);
     lay->setSpacing(12);
 
-    // Panel de configuración
+    QString cstyle = estiloCampo();
+
+    // Panel izquierdo
     QWidget *panel = new QWidget();
     panel->setFixedWidth(320);
     QVBoxLayout *pLay = new QVBoxLayout(panel);
     pLay->setSpacing(12);
 
     QGroupBox *gbConf = new QGroupBox("Configurar transferencia");
-    gbConf->setStyleSheet(
-        "QGroupBox { font-weight: bold; color: " + AZUL_OSCURO + ";"
-                                                                 " border: 1px solid " + GRIS_BORDE + "; border-radius: 6px; margin-top: 8px; }"
-                       "QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 4px; }");
+    gbConf->setStyleSheet(estiloGroupBox());
     QFormLayout *fLay = new QFormLayout(gbConf);
     fLay->setSpacing(10);
-    fLay->setContentsMargins(16, 16, 16, 16);
+    fLay->setContentsMargins(16, 20, 16, 16);
 
-    auto comboSuc = [=]() {
-        QComboBox *cb = new QComboBox();
-        cb->setStyleSheet(
-            "padding: 5px 8px; border: 1px solid " + GRIS_BORDE + ";"
-                                                                  " border-radius: 4px; font-size: 12px;");
-        for (Sucursal *s : red->obtenerSucursales())
-            cb->addItem(
-                QString::fromStdString(s->getId() + " — " + s->getNombre()),
-                QString::fromStdString(s->getId()));
-        return cb;
-    };
-
-    QComboBox *cOrigen  = comboSuc();
-    QComboBox *cDestino = comboSuc();
-    if (cDestino->count() > 1) cDestino->setCurrentIndex(1);
+    QComboBox *cOrigen  = new QComboBox(); cOrigen->setStyleSheet(cstyle);
+    QComboBox *cDestino = new QComboBox(); cDestino->setStyleSheet(cstyle);
 
     QLineEdit *eCodigo = new QLineEdit();
     eCodigo->setPlaceholderText("Código de barra (10 dígitos)");
-    eCodigo->setStyleSheet(
-        "padding: 5px 8px; border: 1px solid " + GRIS_BORDE + ";"
-                                                              " border-radius: 4px; font-size: 12px;");
+    eCodigo->setStyleSheet(cstyle);
+
+    QSpinBox *eUnidades = new QSpinBox();
+    eUnidades->setRange(1, 999999);
+    eUnidades->setValue(1);
+    eUnidades->setSpecialValueText("Todo el stock (1)");
+    eUnidades->setStyleSheet(cstyle);
 
     QRadioButton *rTiempo = new QRadioButton("Minimizar tiempo");
     QRadioButton *rCosto  = new QRadioButton("Minimizar costo");
     rTiempo->setChecked(true);
+    rTiempo->setStyleSheet(QString("color: %1;").arg(TEXTO_NEGRO));
+    rCosto->setStyleSheet(QString("color: %1;").arg(TEXTO_NEGRO));
     QButtonGroup *bgCriterio = new QButtonGroup(w);
     bgCriterio->addButton(rTiempo, 0);
-    bgCriterio->addButton(rCosto,  1);
+    bgCriterio->addButton(rCosto, 1);
     QHBoxLayout *rhLay = new QHBoxLayout();
     rhLay->addWidget(rTiempo); rhLay->addWidget(rCosto);
 
     fLay->addRow("Origen:",    cOrigen);
     fLay->addRow("Destino:",   cDestino);
     fLay->addRow("Código:",    eCodigo);
+    fLay->addRow("Unidades:",  eUnidades);
     fLay->addRow("Criterio:",  rhLay);
 
-    QPushButton *btnCalcular = new QPushButton("⟶  Calcular ruta óptima");
-    QPushButton *btnTransferir = new QPushButton("✓  Ejecutar transferencia");
-    btnCalcular->setStyleSheet(estiloBoton(AZUL_MEDIO));
-    btnTransferir->setStyleSheet(estiloBoton(VERDE));
-    btnTransferir->setEnabled(false);
-
-    fLay->addRow("", btnCalcular);
-    fLay->addRow("", btnTransferir);
+    QPushButton *btnCalc  = new QPushButton("⟶  Calcular ruta óptima");
+    QPushButton *btnTrans = new QPushButton("✓  Ejecutar transferencia");
+    btnCalc->setStyleSheet(estiloBoton(AZUL_MEDIO));
+    btnTrans->setStyleSheet(estiloBoton(VERDE));
+    btnTrans->setEnabled(false);
+    fLay->addRow("", btnCalc);
+    fLay->addRow("", btnTrans);
     pLay->addWidget(gbConf);
 
-    // Estado de colas
     QGroupBox *gbColas = new QGroupBox("Estado de colas");
-    gbColas->setStyleSheet(gbConf->styleSheet());
+    gbColas->setStyleSheet(estiloGroupBox());
     QVBoxLayout *colasLay = new QVBoxLayout(gbColas);
+    colasLay->setContentsMargins(12, 16, 12, 12);
     QTextEdit *txtColas = new QTextEdit();
     txtColas->setReadOnly(true);
-    txtColas->setStyleSheet(
-        "font-family: Courier New; font-size: 11px;"
-        " border: 1px solid " + GRIS_BORDE + ";");
-    txtColas->setFixedHeight(160);
-
-    // Mostrar estado de colas de todas las sucursales
-    QString infoColasTxt;
-    for (Sucursal *s : red->obtenerSucursales()) {
-        infoColasTxt += QString("[%1]\n  Ingreso:  %2\n  Traspaso: %3\n  Salida:   %4\n\n")
-        .arg(QString::fromStdString(s->getId()))
-            .arg(s->getColaIngreso().obtenerTamano())
-            .arg(s->getColaTraspaso().obtenerTamano())
-            .arg(s->getColaSalida().obtenerTamano());
-    }
-    txtColas->setText(infoColasTxt);
+    txtColas->setStyleSheet(estiloTextEdit());
+    txtColas->setFixedHeight(180);
     colasLay->addWidget(txtColas);
     pLay->addWidget(gbColas);
     pLay->addStretch();
     lay->addWidget(panel);
 
-    // Panel de resultados
+    // Panel derecho
     QWidget *panelRes = new QWidget();
     QVBoxLayout *rLay = new QVBoxLayout(panelRes);
     rLay->setSpacing(12);
 
-    // Grafo de la ruta
     QGroupBox *gbRuta = new QGroupBox("Ruta óptima");
-    gbRuta->setStyleSheet(gbConf->styleSheet());
+    gbRuta->setStyleSheet(estiloGroupBox());
     QVBoxLayout *rutaLay = new QVBoxLayout(gbRuta);
+    rutaLay->setContentsMargins(12, 16, 12, 12);
 
     QGraphicsScene *sceneRuta = new QGraphicsScene();
     sceneRuta->setBackgroundBrush(Qt::white);
     QGraphicsView *viewRuta = new QGraphicsView(sceneRuta);
     viewRuta->setRenderHint(QPainter::Antialiasing);
     viewRuta->setFixedHeight(220);
-    viewRuta->setStyleSheet("border: 1px solid " + GRIS_BORDE + ";");
+    viewRuta->setStyleSheet(QString("border: 1px solid %1; background: white;").arg(GRIS_BORDE));
     rutaLay->addWidget(viewRuta);
     rLay->addWidget(gbRuta);
 
-    // Detalles de la ruta
-    QGroupBox *gbDetalle = new QGroupBox("Detalles");
-    gbDetalle->setStyleSheet(gbConf->styleSheet());
-    QVBoxLayout *detLay = new QVBoxLayout(gbDetalle);
-    QTextEdit *txtDetalle = new QTextEdit();
-    txtDetalle->setReadOnly(true);
-    txtDetalle->setStyleSheet(
-        "font-family: Courier New; font-size: 12px;"
-        " border: 1px solid " + GRIS_BORDE + ";");
-    detLay->addWidget(txtDetalle);
-    rLay->addWidget(gbDetalle, 1);
+    QGroupBox *gbDet = new QGroupBox("Detalles");
+    gbDet->setStyleSheet(estiloGroupBox());
+    QVBoxLayout *detLay = new QVBoxLayout(gbDet);
+    detLay->setContentsMargins(12, 16, 12, 12);
+    QTextEdit *txtDet = new QTextEdit();
+    txtDet->setReadOnly(true);
+    txtDet->setStyleSheet(estiloTextEdit());
+    detLay->addWidget(txtDet);
+    rLay->addWidget(gbDet, 1);
     lay->addWidget(panelRes, 1);
 
-    // Almacenar la última ruta calculada
     struct EstadoRuta {
         ResultadoRuta ruta;
-        QString       codigoBarra;
-        QString       origenId;
-        QString       destinoId;
+        QString codigoBarra, origenId, destinoId;
     };
     EstadoRuta *estado = new EstadoRuta();
 
-    // ── Calcular ruta ─────────────────────────────────────────
-    connect(btnCalcular, &QPushButton::clicked, [=]() {
-        QString orig  = cOrigen->currentData().toString();
-        QString dest  = cDestino->currentData().toString();
-        QString codigo = eCodigo->text().trimmed();
-
-        if (orig == dest) {
-            QMessageBox::warning(w,"Error","Origen y destino deben ser distintos."); return;
+    auto refrescarCombosYColas = [=]() {
+        QString prevO = cOrigen->currentData().toString();
+        QString prevD = cDestino->currentData().toString();
+        cOrigen->clear(); cDestino->clear();
+        for (Sucursal *s : red->obtenerSucursales()) {
+            QString lbl = QString::fromStdString(s->getId() + " — " + s->getNombre());
+            QString id  = QString::fromStdString(s->getId());
+            cOrigen->addItem(lbl, id);
+            cDestino->addItem(lbl, id);
         }
+        for (int i = 0; i < cOrigen->count(); i++)
+            if (cOrigen->itemData(i).toString() == prevO) {
+                cOrigen->setCurrentIndex(i); break;
+            }
+        for (int i = 0; i < cDestino->count(); i++)
+            if (cDestino->itemData(i).toString() == prevD) {
+                cDestino->setCurrentIndex(i); break;
+            }
+        if (cDestino->count() > 1 && cDestino->currentIndex() == 0)
+            cDestino->setCurrentIndex(1);
+
+        // Estado de colas
+        QString info;
+        for (Sucursal *s : red->obtenerSucursales()) {
+            info += QString("[%1]\n  Ingreso:  %2\n  Traspaso: %3\n  Salida:   %4\n\n")
+            .arg(QString::fromStdString(s->getId()))
+                .arg(s->getColaIngreso().obtenerTamano())
+                .arg(s->getColaTraspaso().obtenerTamano())
+                .arg(s->getColaSalida().obtenerTamano());
+        }
+        if (info.isEmpty()) info = "Sin sucursales cargadas.";
+        txtColas->setText(info);
+    };
+
+    connect(btnCalc, &QPushButton::clicked, [=]() {
+        QString o = cOrigen->currentData().toString();
+        QString d = cDestino->currentData().toString();
+        QString cod = eCodigo->text().trimmed();
+
+        if (o == d) { QMessageBox::warning(w, "Error",
+                                 "Origen y destino deben ser distintos."); return; }
 
         RedSucursales::Criterio crit = rTiempo->isChecked()
                                            ? RedSucursales::TIEMPO : RedSucursales::COSTO;
+        ResultadoRuta r = red->rutaOptima(o.toStdString(), d.toStdString(), crit);
+        estado->ruta = r; estado->codigoBarra = cod;
+        estado->origenId = o; estado->destinoId = d;
 
-        ResultadoRuta ruta = red->rutaOptima(orig.toStdString(),
-                                             dest.toStdString(), crit);
-        estado->ruta       = ruta;
-        estado->codigoBarra = codigo;
-        estado->origenId   = orig;
-        estado->destinoId  = dest;
-
-        // Dibujar la ruta en el grafo
         sceneRuta->clear();
-        if (!ruta.encontrada) {
-            QGraphicsTextItem *t = sceneRuta->addText("No existe ruta entre las sucursales.");
+        if (!r.encontrada) {
+            QGraphicsTextItem *t = sceneRuta->addText(
+                "No existe ruta entre las sucursales.");
             t->setDefaultTextColor(Qt::red);
-            txtDetalle->setText("Sin ruta encontrada.");
-            btnTransferir->setEnabled(false);
+            txtDet->setText("Sin ruta encontrada.");
+            btnTrans->setEnabled(false);
             return;
         }
 
-        // Nodos de la ruta en línea horizontal
-        int n = (int)ruta.nodos.size();
-        const double espacio = 140.0;
-        const double cy = 80.0;
-        double xInicio = 60.0;
-
+        int n = (int)r.nodos.size();
+        const double esp = 140.0, cy = 80.0;
+        double x0 = 60.0;
         for (int i = 0; i < n; i++) {
-            double x = xInicio + i * espacio;
-            Sucursal *s = red->buscarSucursal(ruta.nodos[i]);
+            double x = x0 + i * esp;
+            Sucursal *s = red->buscarSucursal(r.nodos[i]);
             QColor color = (i == 0 || i == n-1) ? QColor("#FFD600") : QColor(AZUL_CLARO);
-
             sceneRuta->addEllipse(x - 30, cy - 30, 60, 60,
                                   QPen(QColor(AZUL_OSCURO), 2), QBrush(color));
-
-            QGraphicsTextItem *tid = sceneRuta->addText(
-                QString::fromStdString(ruta.nodos[i]));
-            tid->setFont(QFont("Arial", 9, QFont::Bold));
-            tid->setDefaultTextColor(QColor(AZUL_OSCURO));
-            tid->setPos(x - tid->boundingRect().width()/2, cy - 10);
-
+            QGraphicsTextItem *ti = sceneRuta->addText(QString::fromStdString(r.nodos[i]));
+            ti->setFont(QFont("Arial", 9, QFont::Bold));
+            ti->setDefaultTextColor(QColor(AZUL_OSCURO));
+            ti->setPos(x - ti->boundingRect().width()/2, cy - 10);
             if (s) {
-                QGraphicsTextItem *tnom = sceneRuta->addText(
+                QGraphicsTextItem *tn = sceneRuta->addText(
                     QString::fromStdString(s->getNombre()));
-                tnom->setFont(QFont("Arial", 8));
-                tnom->setPos(x - 50, cy + 36);
+                tn->setFont(QFont("Arial", 8));
+                tn->setDefaultTextColor(QColor("#37474F"));
+                tn->setPos(x - 50, cy + 36);
             }
-
             if (i < n - 1) {
-                // Flecha entre nodos
-                sceneRuta->addLine(x + 30, cy, xInicio + (i+1)*espacio - 30, cy,
+                sceneRuta->addLine(x + 30, cy, x0 + (i+1)*esp - 30, cy,
                                    QPen(QColor("#E53935"), 2.5));
-                // Peso
-                auto conns = red->obtenerConexionesDe(ruta.nodos[i]);
-                for (const Conexion &c : conns) {
-                    if (c.destinoId == ruta.nodos[i+1]) {
+                for (const Conexion &c : red->obtenerConexionesDe(r.nodos[i])) {
+                    if (c.destinoId == r.nodos[i+1]) {
                         QGraphicsTextItem *tp = sceneRuta->addText(
                             QString("t=%1s\nQ%2").arg(c.tiempo).arg(c.costo));
                         tp->setFont(QFont("Arial", 8));
@@ -1295,83 +1586,77 @@ QWidget* MainWindow::crearTabTransferencia() {
                 }
             }
         }
-        viewRuta->fitInView(sceneRuta->sceneRect().adjusted(-20,-20,20,20),
+        viewRuta->fitInView(sceneRuta->sceneRect().adjusted(-20, -20, 20, 20),
                             Qt::KeepAspectRatio);
 
-        // Detalle textual
-        double eta = red->calcularETA(ruta, crit);
-        QString detTxt;
-        detTxt += QString("=== Ruta óptima (%1) ===\n")
-                      .arg(crit == RedSucursales::TIEMPO ? "mínimo tiempo" : "mínimo costo");
-        detTxt += "Camino: ";
-        for (const auto &nid : ruta.nodos)
-            detTxt += QString::fromStdString(nid) + " → ";
-        detTxt.chop(3);
-        detTxt += "\n\n";
-        detTxt += QString("Peso total  : %1 %2\n")
-                      .arg(ruta.pesoTotal)
-                      .arg(crit == RedSucursales::TIEMPO ? "segundos" : "Q");
-        detTxt += QString("ETA total   : %1 segundos\n").arg(eta);
-        detTxt += QString("Nodos en ruta: %1\n\n").arg(n);
-        detTxt += "Detalle por tramo:\n";
-
+        double eta = red->calcularETA(r, crit);
+        QString det;
+        det += QString("=== Ruta óptima (%1) ===\n")
+                   .arg(crit == RedSucursales::TIEMPO ? "mínimo tiempo" : "mínimo costo");
+        det += "Camino: ";
+        for (const auto &nid : r.nodos) det += QString::fromStdString(nid) + " → ";
+        det.chop(3);
+        det += QString("\n\nPeso total : %1 %2\n")
+                   .arg(r.pesoTotal)
+                   .arg(crit == RedSucursales::TIEMPO ? "segundos" : "Q");
+        det += QString("ETA total  : %1 segundos\n").arg(eta);
+        det += QString("Nodos      : %1\n\nDetalle por tramo:\n").arg(n);
         for (int i = 0; i < n - 1; i++) {
-            auto conns = red->obtenerConexionesDe(ruta.nodos[i]);
-            for (const Conexion &c : conns) {
-                if (c.destinoId == ruta.nodos[i+1]) {
-                    detTxt += QString("  %1 → %2 : t=%3s  Q%4\n")
-                                  .arg(QString::fromStdString(c.origenId))
-                                  .arg(QString::fromStdString(c.destinoId))
-                                  .arg(c.tiempo).arg(c.costo);
+            for (const Conexion &c : red->obtenerConexionesDe(r.nodos[i])) {
+                if (c.destinoId == r.nodos[i+1]) {
+                    det += QString("  %1 → %2 : t=%3s  Q%4\n")
+                               .arg(QString::fromStdString(c.origenId))
+                               .arg(QString::fromStdString(c.destinoId))
+                               .arg(c.tiempo).arg(c.costo);
                     break;
                 }
             }
         }
-
-        if (!codigo.isEmpty()) {
-            Sucursal *sOrig = red->buscarSucursal(orig.toStdString());
-            Producto *p = sOrig ? sOrig->buscarPorCodigo(codigo.toStdString()) : nullptr;
+        if (!cod.isEmpty()) {
+            Sucursal *sO = red->buscarSucursal(o.toStdString());
+            Producto *p = sO ? sO->buscarPorCodigo(cod.toStdString()) : nullptr;
             if (p) {
-                detTxt += QString("\nProducto: %1\n  Código: %2\n  Estado: %3\n")
-                              .arg(QString::fromStdString(p->nombre))
-                              .arg(codigo)
-                              .arg(QString::fromStdString(p->estado));
-                btnTransferir->setEnabled(true);
+                det += QString("\nProducto: %1 (%2)\nEstado: %3\nStock disponible: %4 unidades\n")
+                .arg(QString::fromStdString(p->nombre)).arg(cod)
+                    .arg(QString::fromStdString(p->estado))
+                    .arg(p->stock);
+                eUnidades->setMaximum(p->stock);
+                eUnidades->setValue(p->stock > 1 ? 1 : p->stock);
+                btnTrans->setEnabled(true);
             } else {
-                detTxt += "\n[!] Producto no encontrado en el origen.\n";
-                btnTransferir->setEnabled(false);
+                det += "\n[!] Producto no encontrado en el origen.\n";
+                btnTrans->setEnabled(false);
             }
         } else {
-            detTxt += "\n[!] Ingresa un código para habilitar la transferencia.\n";
-            btnTransferir->setEnabled(false);
+            det += "\n[!] Ingresa un código para habilitar la transferencia.\n";
+            btnTrans->setEnabled(false);
         }
-        txtDetalle->setText(detTxt);
+        txtDet->setText(det);
     });
 
-    // ── Ejecutar transferencia ────────────────────────────────
-    connect(btnTransferir, &QPushButton::clicked, [=]() {
+    connect(btnTrans, &QPushButton::clicked, [=]() {
         if (!estado->ruta.encontrada) return;
-
         RedSucursales::Criterio crit = rTiempo->isChecked()
                                            ? RedSucursales::TIEMPO : RedSucursales::COSTO;
-
         bool ok = red->transferirProducto(
             estado->codigoBarra.toStdString(),
             estado->origenId.toStdString(),
             estado->destinoId.toStdString(),
-            crit);
-
+            crit,
+            eUnidades->value());
         if (ok) {
             QMessageBox::information(w, "Transferencia exitosa",
                                      QString("Producto transferido de %1 a %2.")
                                          .arg(estado->origenId).arg(estado->destinoId));
-            btnTransferir->setEnabled(false);
+            btnTrans->setEnabled(false);
             emit redActualizada();
         } else {
             QMessageBox::warning(w, "Error", "No se pudo completar la transferencia.");
         }
     });
 
+    connect(this, &MainWindow::redActualizada, refrescarCombosYColas);
+    refrescarCombosYColas();
     return w;
 }
 
@@ -1380,310 +1665,277 @@ QWidget* MainWindow::crearTabTransferencia() {
 // ════════════════════════════════════════════════════════════
 QWidget* MainWindow::crearTabRendimiento() {
     QWidget *w = new QWidget();
+    w->setStyleSheet("background: white;");
     QVBoxLayout *lay = new QVBoxLayout(w);
-    lay->setContentsMargins(24, 20, 24, 20);
-    lay->setSpacing(16);
+    lay->setContentsMargins(20, 20, 20, 20);
+    lay->setSpacing(14);
 
-    QLabel *titulo = new QLabel("Medición de Rendimiento — Búsqueda por Nombre");
-    titulo->setStyleSheet(
-        "color: " + AZUL_OSCURO + "; font-size: 16px; font-weight: bold;"
-                                  " border-bottom: 2px solid " + AZUL_MEDIO + "; padding-bottom: 8px;");
+    QString cstyle = estiloCampo();
+
+    QLabel *titulo = new QLabel("Medición de Rendimiento");
+    titulo->setStyleSheet(QString(
+                              "color: %1; font-size: 16px; font-weight: bold;"
+                              " border-bottom: 2px solid %2; padding-bottom: 8px;"
+                              ).arg(AZUL_OSCURO).arg(AZUL_MEDIO));
     lay->addWidget(titulo);
 
-    // Configuración
     QHBoxLayout *confLay = new QHBoxLayout();
     QLabel *lblSuc = new QLabel("Sucursal:");
+    lblSuc->setStyleSheet(QString("color: %1; font-weight: bold;").arg(TEXTO_NEGRO));
     QComboBox *cmbSuc = new QComboBox();
-    cmbSuc->setStyleSheet(
-        "padding: 6px; border: 1px solid " + GRIS_BORDE + ";"
-                                                          " border-radius: 4px; font-size: 12px;");
-    for (Sucursal *s : red->obtenerSucursales())
-        cmbSuc->addItem(
-            QString::fromStdString(s->getId() + " — " + s->getNombre()),
-            QString::fromStdString(s->getId()));
-
+    cmbSuc->setStyleSheet(cstyle);
     QPushButton *btnEjecutar = new QPushButton("▶  Ejecutar benchmark");
     btnEjecutar->setStyleSheet(estiloBoton(AZUL_MEDIO));
-    btnEjecutar->setFixedWidth(200);
-
+    btnEjecutar->setFixedWidth(220);
     confLay->addWidget(lblSuc);
     confLay->addWidget(cmbSuc, 1);
     confLay->addWidget(btnEjecutar);
     lay->addLayout(confLay);
 
-    // Tabla de resultados
     QTableWidget *tbl = new QTableWidget(4, 5);
     tbl->setHorizontalHeaderLabels(
-        {"Caso de prueba","Lista Simple (µs)",
-         "Lista Ordenada (µs)","Árbol AVL (µs)","Hash (µs)"});
+        {"Caso", "Lista Simple (µs)", "Lista Ordenada (µs)",
+         "Árbol AVL (µs)", "Hash (µs)"});
     tbl->verticalHeader()->setVisible(false);
     tbl->horizontalHeader()->setStretchLastSection(true);
     tbl->horizontalHeader()->setStyleSheet(estiloHeader());
     tbl->setEditTriggers(QAbstractItemView::NoEditTriggers);
     tbl->setAlternatingRowColors(true);
-    tbl->setStyleSheet("alternate-background-color: " + GRIS_CLARO + ";");
-
+    tbl->setStyleSheet(estiloTabla());
     QStringList casos = {
-        "Búsqueda exitosa aleatoria",
-        "Búsqueda fallida",
-        "Extremos (primero/último)",
-        "Peor caso (último A-Z)"
-    };
+                         "Búsqueda exitosa aleatoria", "Búsqueda fallida",
+                         "Extremos (primero/último)", "Peor caso (último A-Z)"};
     for (int i = 0; i < 4; i++) {
-        tbl->setItem(i, 0, new QTableWidgetItem(casos[i]));
-        for (int j = 1; j < 5; j++)
-            tbl->setItem(i, j, new QTableWidgetItem("—"));
+        auto mk = [](const QString &v) {
+            QTableWidgetItem *it = new QTableWidgetItem(v);
+            it->setForeground(QColor(TEXTO_NEGRO));
+            return it;
+        };
+        tbl->setItem(i, 0, mk(casos[i]));
+        for (int j = 1; j < 5; j++) tbl->setItem(i, j, mk("—"));
     }
     tbl->resizeColumnsToContents();
     lay->addWidget(tbl);
 
-    // Análisis
-    QGroupBox *gbAnalisis = new QGroupBox("Análisis de factores de aceleración");
-    gbAnalisis->setStyleSheet(
-        "QGroupBox { font-weight: bold; color: " + AZUL_OSCURO + ";"
-                                                                 " border: 1px solid " + GRIS_BORDE + "; border-radius: 6px; margin-top: 8px; }"
-                       "QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 4px; }");
-    QVBoxLayout *aLay = new QVBoxLayout(gbAnalisis);
-    QTextEdit *txtAnalisis = new QTextEdit();
-    txtAnalisis->setReadOnly(true);
-    txtAnalisis->setStyleSheet(
-        "font-family: Courier New; font-size: 12px;"
-        " border: 1px solid " + GRIS_BORDE + ";");
-    txtAnalisis->setFixedHeight(140);
-    aLay->addWidget(txtAnalisis);
-    lay->addWidget(gbAnalisis);
+    QGroupBox *gbA = new QGroupBox("Análisis de factores de aceleración");
+    gbA->setStyleSheet(estiloGroupBox());
+    QVBoxLayout *aLay = new QVBoxLayout(gbA);
+    aLay->setContentsMargins(12, 16, 12, 12);
+    QTextEdit *txtA = new QTextEdit();
+    txtA->setReadOnly(true);
+    txtA->setStyleSheet(estiloTextEdit());
+    txtA->setFixedHeight(140);
+    aLay->addWidget(txtA);
+    lay->addWidget(gbA);
     lay->addStretch();
 
-    // ── Ejecutar benchmark ────────────────────────────────────
+    auto refrescarCombo = [=]() {
+        cmbSuc->clear();
+        for (Sucursal *s : red->obtenerSucursales())
+            cmbSuc->addItem(QString::fromStdString(s->getId() + " — " + s->getNombre()),
+                            QString::fromStdString(s->getId()));
+    };
+
     connect(btnEjecutar, &QPushButton::clicked, [=]() {
+        if (cmbSuc->count() == 0) {
+            QMessageBox::warning(w, "Atención", "No hay sucursales cargadas.");
+            return;
+        }
         QString sucId = cmbSuc->currentData().toString();
         Sucursal *s = red->buscarSucursal(sucId.toStdString());
         if (!s || s->contarProductos() < 20) {
-            QMessageBox::warning(w,"Error","Se necesitan al menos 20 productos."); return;
+            QMessageBox::warning(w, "Atención",
+                                 QString("Se necesitan al menos 20 productos en la sucursal (hay %1).")
+                                     .arg(s ? s->contarProductos() : 0));
+            return;
         }
 
-        // Recopilar nombres del AVL
-        std::vector<std::string> nombres;
-        struct Walker {
-            static void walk(NodoAVL *n, std::vector<std::string> &v) {
+        std::vector<std::string> nombres, codigos;
+        struct W {
+            static void walk(NodoAVL *n, std::vector<std::string> &v,
+                             std::vector<std::string> &c) {
                 if (!n || v.size() >= 20) return;
-                walk(n->izquierda, v);
-                if (v.size() < 20) v.push_back(n->dato.nombre);
-                walk(n->derecha, v);
+                walk(n->izquierda, v, c);
+                if (v.size() < 20) {
+                    v.push_back(n->dato.nombre);
+                    c.push_back(n->dato.codigoBarra);
+                }
+                walk(n->derecha, v, c);
             }
         };
-        Walker::walk(s->getCatalogo()->obtenerArbolAVL()->obtenerRaiz(), nombres);
-
-        if (nombres.size() < 20) {
-            QMessageBox::warning(w,"Error","No hay suficientes productos."); return;
-        }
+        W::walk(s->getCatalogo()->obtenerArbolAVL()->obtenerRaiz(), nombres, codigos);
+        if (nombres.size() < 20) return;
 
         const int N = 20, M = 5;
         using Clock = std::chrono::high_resolution_clock;
-
-        auto medirLS = [&](const std::vector<std::string> &ns) {
+        auto medir = [&](auto fn, const std::vector<std::string> &xs) {
             double total = 0;
             for (int rep = 0; rep < M; rep++) {
                 auto t0 = Clock::now();
-                for (int i = 0; i < N; i++)
-                    s->getCatalogo()->obtenerListaSimple()->buscarPorNombre(ns[i % ns.size()]);
-                total += std::chrono::duration<double,std::micro>(Clock::now()-t0).count();
-            }
-            return total / M / N;
-        };
-        auto medirLO = [&](const std::vector<std::string> &ns) {
-            double total = 0;
-            for (int rep = 0; rep < M; rep++) {
-                auto t0 = Clock::now();
-                for (int i = 0; i < N; i++)
-                    s->getCatalogo()->obtenerListaOrdenada()->buscarPorNombre(ns[i % ns.size()]);
-                total += std::chrono::duration<double,std::micro>(Clock::now()-t0).count();
-            }
-            return total / M / N;
-        };
-        auto medirAVL = [&](const std::vector<std::string> &ns) {
-            double total = 0;
-            for (int rep = 0; rep < M; rep++) {
-                auto t0 = Clock::now();
-                for (int i = 0; i < N; i++)
-                    s->getCatalogo()->obtenerArbolAVL()->buscar(ns[i % ns.size()]);
-                total += std::chrono::duration<double,std::micro>(Clock::now()-t0).count();
-            }
-            return total / M / N;
-        };
-        auto medirHash = [&](const std::vector<std::string> & /*ns*/) {
-            // Hash busca por código, así que tomamos el código del primer producto
-            std::vector<std::string> codigos;
-            struct CWalk {
-                static void walk(NodoAVL *n, std::vector<std::string> &v) {
-                    if (!n || v.size() >= 20) return;
-                    walk(n->izquierda, v);
-                    if (v.size() < 20) v.push_back(n->dato.codigoBarra);
-                    walk(n->derecha, v);
-                }
-            };
-            CWalk::walk(s->getCatalogo()->obtenerArbolAVL()->obtenerRaiz(), codigos);
-            double total = 0;
-            for (int rep = 0; rep < M; rep++) {
-                auto t0 = Clock::now();
-                for (int i = 0; i < N; i++)
-                    s->getCatalogo()->obtenerTablaHash()->buscar(codigos[i % codigos.size()]);
-                total += std::chrono::duration<double,std::micro>(Clock::now()-t0).count();
+                for (int i = 0; i < N; i++) fn(xs[i % xs.size()]);
+                total += std::chrono::duration<double, std::micro>(
+                             Clock::now() - t0).count();
             }
             return total / M / N;
         };
 
-        std::vector<std::string> fallidas = {
-            "Zzzzz No Existe", "XXXXX Fantasma",
-            "Producto Inexistente", "AAA Falso", "ZZZ Nada"
-        };
-        std::vector<std::string> extremos = {nombres.front(), nombres.back()};
-        std::vector<std::string> peor     = {nombres.back()};
+        std::vector<std::string> fal = {"Zzzzz No Existe", "XXXXX Fantasma",
+                                        "Producto Inexistente", "AAA Falso", "ZZZ Nada"};
+        std::vector<std::string> falCods = {"0000000001", "9999999999",
+                                            "1234567890", "0987654321", "5555555555"};
+        std::vector<std::string> ext = {nombres.front(), nombres.back()};
+        std::vector<std::string> extC = {codigos.front(), codigos.back()};
+        std::vector<std::string> peor = {nombres.back()};
+        std::vector<std::string> peorC = {codigos.back()};
 
-        struct { double ls, lo, avl, hash; } res[4];
-        res[0] = {medirLS(nombres),   medirLO(nombres),   medirAVL(nombres),  medirHash(nombres)};
-        res[1] = {medirLS(fallidas),  medirLO(fallidas),  medirAVL(fallidas), medirHash(fallidas)};
-        res[2] = {medirLS(extremos),  medirLO(extremos),  medirAVL(extremos), medirHash(extremos)};
-        res[3] = {medirLS(peor),      medirLO(peor),      medirAVL(peor),     medirHash(peor)};
+        Catalogo *cat = s->getCatalogo();
+        auto fLS  = [&](const std::string &x) { cat->obtenerListaSimple()->buscarPorNombre(x); };
+        auto fLO  = [&](const std::string &x) { cat->obtenerListaOrdenada()->buscarPorNombre(x); };
+        auto fAVL = [&](const std::string &x) { cat->obtenerArbolAVL()->buscar(x); };
+        auto fH   = [&](const std::string &x) { cat->obtenerTablaHash()->buscar(x); };
+
+        struct { double ls, lo, avl, h; } R[4];
+        R[0] = {medir(fLS, nombres), medir(fLO, nombres),
+                medir(fAVL, nombres), medir(fH, codigos)};
+        R[1] = {medir(fLS, fal), medir(fLO, fal),
+                medir(fAVL, fal), medir(fH, falCods)};
+        R[2] = {medir(fLS, ext), medir(fLO, ext),
+                medir(fAVL, ext), medir(fH, extC)};
+        R[3] = {medir(fLS, peor), medir(fLO, peor),
+                medir(fAVL, peor), medir(fH, peorC)};
 
         for (int i = 0; i < 4; i++) {
-            tbl->item(i,1)->setText(QString::number(res[i].ls,  'f', 3));
-            tbl->item(i,2)->setText(QString::number(res[i].lo,  'f', 3));
-            tbl->item(i,3)->setText(QString::number(res[i].avl, 'f', 3));
-            tbl->item(i,4)->setText(QString::number(res[i].hash,'f', 3));
+            tbl->item(i, 1)->setText(QString::number(R[i].ls,  'f', 3));
+            tbl->item(i, 2)->setText(QString::number(R[i].lo,  'f', 3));
+            tbl->item(i, 3)->setText(QString::number(R[i].avl, 'f', 3));
+            tbl->item(i, 4)->setText(QString::number(R[i].h,   'f', 3));
         }
         tbl->resizeColumnsToContents();
 
-        // Análisis
-        double avl0  = res[0].avl  > 0 ? res[0].avl  : 0.001;
-        double hash0 = res[0].hash > 0 ? res[0].hash : 0.001;
-        QString txt;
-        txt += QString("=== Factores de aceleración (búsqueda exitosa) ===\n");
-        txt += QString("Lista Simple  vs AVL  : %.1fx más lenta\n").arg(res[0].ls  / avl0);
-        txt += QString("Lista Ordenada vs AVL : %.1fx más lenta\n").arg(res[0].lo  / avl0);
-        txt += QString("Lista Simple  vs Hash : %.1fx más lenta\n").arg(res[0].ls  / hash0);
-        txt += QString("AVL vs Hash           : %.1fx (AVL %s)\n")
-                   .arg(avl0 / hash0)
-                   .arg(avl0 > hash0 ? "más lento" : "más rápido");
-        txt += QString("\nn=%1 → log₂(n)≈%.1f niveles en AVL | Hash O(1) amortizado\n")
-                   .arg(s->contarProductos())
-                   .arg(std::log2(s->contarProductos()));
-        txtAnalisis->setText(txt);
+        double avl0 = R[0].avl > 0 ? R[0].avl : 0.001;
+        double h0   = R[0].h > 0 ? R[0].h : 0.001;
+        QString t;
+        t += "=== Factores de aceleración (búsqueda exitosa) ===\n";
+        t += QString("Lista Simple   vs AVL  : %1x mas lenta\n").arg(R[0].ls / avl0, 0, 'f', 1);
+        t += QString("Lista Ordenada vs AVL  : %1x mas lenta\n").arg(R[0].lo / avl0, 0, 'f', 1);
+        t += QString("Lista Simple   vs Hash : %1x mas lenta\n").arg(R[0].ls / h0, 0, 'f', 1);
+        t += QString("\nn=%1 -> log2(n) = %2 niveles en AVL | Hash O(1) amortizado\n")
+                 .arg(s->contarProductos()).arg(std::log2(s->contarProductos()), 0, 'f', 1);
+        txtA->setText(t);
     });
 
+    connect(this, &MainWindow::redActualizada, refrescarCombo);
+    refrescarCombo();
     return w;
 }
 
 // ════════════════════════════════════════════════════════════
-// TAB 7 — ESTRUCTURAS (Visualización)
+// TAB 7 — VISUALIZACIÓN
 // ════════════════════════════════════════════════════════════
 QWidget* MainWindow::crearTabEstructuras() {
     QWidget *w = new QWidget();
+    w->setStyleSheet("background: white;");
     QVBoxLayout *lay = new QVBoxLayout(w);
     lay->setContentsMargins(12, 12, 12, 12);
     lay->setSpacing(10);
 
-    QHBoxLayout *ctrlLay = new QHBoxLayout();
-    QComboBox *cmbSuc = new QComboBox();
-    cmbSuc->setStyleSheet(
-        "padding: 6px; border: 1px solid " + GRIS_BORDE + ";"
-                                                          " border-radius: 4px; font-size: 12px;");
-    for (Sucursal *s : red->obtenerSucursales())
-        cmbSuc->addItem(
-            QString::fromStdString(s->getId() + " — " + s->getNombre()),
-            QString::fromStdString(s->getId()));
+    QString cstyle = estiloCampo();
 
+    QHBoxLayout *ctrlLay = new QHBoxLayout();
+    QLabel *lblSuc = new QLabel("Sucursal:");
+    lblSuc->setStyleSheet(QString("color: %1; font-weight: bold;").arg(TEXTO_NEGRO));
+    QComboBox *cmbSuc = new QComboBox();
+    cmbSuc->setStyleSheet(cstyle);
+    QLabel *lblArb = new QLabel("Árbol:");
+    lblArb->setStyleSheet(QString("color: %1; font-weight: bold;").arg(TEXTO_NEGRO));
     QComboBox *cmbArbol = new QComboBox();
     cmbArbol->addItems({"Árbol AVL", "Árbol B", "Árbol B+", "Grafo de red"});
-    cmbArbol->setStyleSheet(cmbSuc->styleSheet());
+    cmbArbol->setStyleSheet(cstyle);
     cmbArbol->setFixedWidth(160);
 
-    QPushButton *btnGenerar = new QPushButton("⟳  Generar .dot");
-    QPushButton *btnConvertir = new QPushButton("🖼  Convertir a PNG");
-    btnGenerar->setStyleSheet(estiloBoton(AZUL_MEDIO));
-    btnConvertir->setStyleSheet(estiloBoton(NARANJA));
+    QPushButton *btnGen  = new QPushButton("⟳  Generar .dot");
+    QPushButton *btnConv = new QPushButton("🖼  Convertir a PNG");
+    btnGen->setStyleSheet(estiloBoton(AZUL_MEDIO));
+    btnConv->setStyleSheet(estiloBoton(NARANJA));
 
-    ctrlLay->addWidget(new QLabel("Sucursal:"));
+    ctrlLay->addWidget(lblSuc);
     ctrlLay->addWidget(cmbSuc, 1);
-    ctrlLay->addWidget(new QLabel("Árbol:"));
+    ctrlLay->addWidget(lblArb);
     ctrlLay->addWidget(cmbArbol);
-    ctrlLay->addWidget(btnGenerar);
-    ctrlLay->addWidget(btnConvertir);
+    ctrlLay->addWidget(btnGen);
+    ctrlLay->addWidget(btnConv);
     lay->addLayout(ctrlLay);
 
     QLabel *lblImg = new QLabel("Genera el archivo .dot y conviértelo a PNG para visualizar.");
     lblImg->setAlignment(Qt::AlignCenter);
-    lblImg->setStyleSheet(
-        "color: #888; font-size: 13px; background: " + GRIS_CLARO + ";"
-                                                                    " border: 1px solid " + GRIS_BORDE + "; border-radius: 4px; padding: 20px;");
+    lblImg->setStyleSheet(QString(
+                              "color: %1; font-size: 13px; background: %2;"
+                              " border: 1px solid %3; border-radius: 4px; padding: 30px;"
+                              ).arg("#888").arg(GRIS_CLARO).arg(GRIS_BORDE));
     lblImg->setWordWrap(true);
     lay->addWidget(lblImg, 1);
 
     QLabel *lblRuta = new QLabel();
-    lblRuta->setStyleSheet("color: #555; font-size: 11px; padding: 2px;");
+    lblRuta->setStyleSheet(QString("color: %1; font-size: 11px;").arg(TEXTO_NEGRO));
     lay->addWidget(lblRuta);
 
-    // ── Generar .dot ──────────────────────────────────────────
-    connect(btnGenerar, &QPushButton::clicked, [=]() {
-        QString sucId  = cmbSuc->currentData().toString();
-        int     arbol  = cmbArbol->currentIndex();
-        Sucursal *s    = red->buscarSucursal(sucId.toStdString());
+    auto refrescarCombo = [=]() {
+        cmbSuc->clear();
+        for (Sucursal *s : red->obtenerSucursales())
+            cmbSuc->addItem(QString::fromStdString(s->getId() + " — " + s->getNombre()),
+                            QString::fromStdString(s->getId()));
+    };
 
+    connect(btnGen, &QPushButton::clicked, [=]() {
+        if (red->contarSucursales() == 0 && cmbArbol->currentIndex() != 3) {
+            QMessageBox::warning(w, "Atención", "No hay sucursales cargadas."); return;
+        }
+        QString sucId = cmbSuc->currentData().toString();
+        int arb = cmbArbol->currentIndex();
         QString rutaDot;
-        if (arbol == 3) { // Grafo de red
+        if (arb == 3) {
             rutaDot = "output/grafo_red.dot";
             red->generarDot(rutaDot.toStdString());
-        } else if (s) {
+        } else {
+            Sucursal *s = red->buscarSucursal(sucId.toStdString());
+            if (!s) return;
             VisualizadorDot viz("output");
             Catalogo *cat = s->getCatalogo();
-            if (arbol == 0) {
-                rutaDot = "output/avl.dot";
-                viz.generarAVL(cat->obtenerArbolAVL(), 30);
-            } else if (arbol == 1) {
-                rutaDot = "output/arbolB.dot";
-                viz.generarArbolB(cat->obtenerArbolB(), 20);
-            } else {
-                rutaDot = "output/arbolBP.dot";
-                viz.generarArbolBPlus(cat->obtenerArbolBPlus(), 20);
-            }
+            if (arb == 0) { rutaDot = "output/avl.dot";    viz.generarAVL(cat->obtenerArbolAVL(), 30); }
+            else if (arb == 1) { rutaDot = "output/arbolB.dot";  viz.generarArbolB(cat->obtenerArbolB(), 20); }
+            else { rutaDot = "output/arbolBP.dot"; viz.generarArbolBPlus(cat->obtenerArbolBPlus(), 20); }
         }
         lblRuta->setText("Archivo generado: " + rutaDot);
         lblImg->setText(
             QString("Archivo .dot generado en:\n%1\n\n"
-                    "Para convertir a PNG, presiona 'Convertir a PNG'\n"
-                    "(requiere Graphviz instalado en el sistema).")
-                .arg(rutaDot));
+                    "Para convertir a PNG, presiona 'Convertir a PNG'.\n"
+                    "(requiere Graphviz instalado)").arg(rutaDot));
     });
 
-    // ── Convertir a PNG con Graphviz ──────────────────────────
-    connect(btnConvertir, &QPushButton::clicked, [=]() {
-        QString rutaDot = lblRuta->text().replace("Archivo generado: ", "");
-        if (rutaDot.isEmpty()) {
-            QMessageBox::information(w, "Info", "Primero genera el archivo .dot."); return;
+    connect(btnConv, &QPushButton::clicked, [=]() {
+        QString r = lblRuta->text().replace("Archivo generado: ", "");
+        if (r.isEmpty()) {
+            QMessageBox::information(w, "Info", "Primero genera el .dot."); return;
         }
-        QString rutaPng = rutaDot;
-        rutaPng.replace(".dot", ".png");
-
+        QString png = r; png.replace(".dot", ".png");
         QProcess proc;
-        proc.start("dot", {"-Tpng", rutaDot, "-o", rutaPng});
+        proc.start("dot", {"-Tpng", r, "-o", png});
         proc.waitForFinished(8000);
-
         if (proc.exitCode() == 0) {
-            QPixmap px(rutaPng);
+            QPixmap px(png);
             if (!px.isNull()) {
                 lblImg->setPixmap(px.scaled(lblImg->size(),
                                             Qt::KeepAspectRatio, Qt::SmoothTransformation));
                 lblImg->setText("");
-            } else {
-                lblImg->setText("PNG generado en: " + rutaPng);
             }
         } else {
             QMessageBox::warning(w, "Error",
-                                 "No se pudo convertir. ¿Está Graphviz instalado?\n"
-                                 "Instalar desde: https://graphviz.org/download/\n\n"
-                                 "También puedes abrir el .dot manualmente en:\n" + rutaDot);
+                                 "No se pudo convertir. Instala Graphviz desde:\n"
+                                 "https://graphviz.org/download/");
         }
     });
 
+    connect(this, &MainWindow::redActualizada, refrescarCombo);
+    refrescarCombo();
     return w;
 }

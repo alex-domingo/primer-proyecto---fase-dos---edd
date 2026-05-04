@@ -7,6 +7,7 @@
 #include <QStatusBar>
 #include "RedSucursales.h"
 #include "CargadorRed.h"
+#include "VisualizadorDot.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -15,10 +16,14 @@ QT_END_NAMESPACE
 /*
  * MainWindow — orquestador de la GUI
  * ------------------------------------
- * Posee la RedSucursales (fuente única de datos).
- * Carga los CSV al arrancar.
- * Cada tab recibe un puntero a la red para leer y modificar.
- * Las señales actualizarRed() propagan cambios entre tabs.
+ * El sistema arranca con la red VACÍA. El usuario debe usar los
+ * botones del Tab Sistema para cargar los CSV.
+ *
+ * Cuando algo cambia en la red, se emite redActualizada(). Cada
+ * tab se conecta a esa señal y reconstruye sus widgets dinámicos
+ * (combos de sucursal, listas, tablas) desde cero con los datos
+ * actuales — eso garantiza que las sucursales nuevas aparezcan
+ * en todos lados.
  */
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -28,25 +33,22 @@ public:
     ~MainWindow() override;
 
 signals:
-    // Se emite cuando cualquier tab modifica la red
     void redActualizada();
 
 private slots:
     void onRedActualizada();
-    void onTabCambiado(int index);
 
 private:
     Ui::MainWindow *ui;
     RedSucursales  *red;
 
     QTabWidget *tabs;
-    QLabel     *lblEstado;  // barra de estado inferior
+    QLabel     *lblEstado;
+    QLabel     *lblHeaderStats;
 
-    void cargarDatos();
     void construirUI();
     void actualizarBarraEstado();
 
-    // Builders de cada tab
     QWidget* crearTabSistema();
     QWidget* crearTabSucursales();
     QWidget* crearTabRed();
@@ -55,9 +57,10 @@ private:
     QWidget* crearTabRendimiento();
     QWidget* crearTabEstructuras();
 
-    // Helpers de estilo
     static QString estiloBoton(const QString &color);
     static QString estiloHeader();
+    static QString estiloTabla();
+    static QString estiloCampo();
 };
 
 #endif // MAINWINDOW_H

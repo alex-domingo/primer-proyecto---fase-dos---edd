@@ -162,3 +162,64 @@ void Catalogo::listarOrdenado() const {
 
 int  Catalogo::contarProductos() const { return totalProductos; }
 bool Catalogo::estaVacio()        const { return totalProductos == 0; }
+
+// ── Actualizar stock en todas las estructuras ─────────────────
+/*
+ * Modifica el stock de un producto en las 6 estructuras sin
+ * eliminarlo ni re-insertarlo. Útil para transferencias parciales.
+ *
+ * Las listas y árboles guardan copias independientes del Producto,
+ * así que hay que actualizarlas todas manualmente.
+ *
+ * Complejidad: O(n) para las listas, O(log n) para el AVL,
+ *              O(log n) para la Hash, O(log n) para B y B+.
+ */
+bool Catalogo::actualizarStock(const std::string &codigoBarra, int nuevoStock) {
+    if (nuevoStock < 0) return false;
+
+    // ── Lista simple ──────────────────────────────────────────
+    {
+        Producto *p = listaSimple->buscarPorCodigo(codigoBarra);
+        if (p) p->stock = nuevoStock;
+    }
+    // ── Lista ordenada ────────────────────────────────────────
+    {
+        Producto *p = listaOrdenada->buscarPorCodigo(codigoBarra);
+        if (p) p->stock = nuevoStock;
+    }
+    // ── Árbol AVL ─────────────────────────────────────────────
+    // buscar() devuelve puntero al dato dentro del nodo — modificable directamente
+    {
+        // Necesitamos el nombre para buscar en el AVL
+        // Lo obtenemos desde la Hash que ya tiene el producto
+        Producto *ph = tablaHash->buscar(codigoBarra);
+        if (ph) {
+            Producto *pa = arbolAVL->buscar(ph->nombre);
+            if (pa) pa->stock = nuevoStock;
+        }
+    }
+    // ── Tabla Hash ────────────────────────────────────────────
+    {
+        Producto *p = tablaHash->buscar(codigoBarra);
+        if (p) p->stock = nuevoStock;
+    }
+    // ── Árbol B (indexado por fecha) ──────────────────────────
+    {
+        Producto *ph = tablaHash->buscar(codigoBarra);
+        if (ph) {
+            Producto *pb = arbolB->buscar(ph->fechaCaducidad);
+            if (pb && pb->codigoBarra == codigoBarra) pb->stock = nuevoStock;
+        }
+    }
+    // ── Árbol B+ (indexado por categoría) ────────────────────
+    // El B+ puede tener múltiples productos con la misma categoría,
+    // así que buscamos por categoría y filtramos por codigoBarra
+    {
+        Producto *ph = tablaHash->buscar(codigoBarra);
+        if (ph) {
+            Producto *pb = arbolBPlus->buscar(ph->categoria, ph->nombre);
+            if (pb && pb->codigoBarra == codigoBarra) pb->stock = nuevoStock;
+        }
+    }
+    return true;
+}
