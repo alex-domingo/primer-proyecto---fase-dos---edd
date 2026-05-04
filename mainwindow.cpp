@@ -1,12 +1,14 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include "VisualizadorDot.h"
+#include "SimuladorTransferencia.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
 #include <QFormLayout>
 #include <QSplitter>
+#include <QScrollArea>
 #include <QLabel>
 #include <QPushButton>
 #include <QLineEdit>
@@ -35,6 +37,8 @@
 #include <QCheckBox>
 #include <QTimer>
 #include <QProcess>
+#include <QProgressBar>
+#include <QDateTime>
 #include <QString>
 #include <QFont>
 #include <QColor>
@@ -1393,17 +1397,30 @@ QWidget* MainWindow::crearTabTransferencia() {
 
     QString cstyle = estiloCampo();
 
-    // Panel izquierdo
+    // Panel izquierdo dentro de QScrollArea para que no se comprima
+    QScrollArea *scrollPanel = new QScrollArea();
+    scrollPanel->setFixedWidth(400);
+    scrollPanel->setWidgetResizable(true);
+    scrollPanel->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scrollPanel->setStyleSheet(QString(
+                                   "QScrollArea { border: none; background: white; }"
+                                   "QScrollBar:vertical { width: 6px; background: %1; }"
+                                   "QScrollBar::handle:vertical { background: %2; border-radius: 3px; }"
+                                   ).arg(GRIS_CLARO).arg(AZUL_CLARO));
+
     QWidget *panel = new QWidget();
-    panel->setFixedWidth(320);
+    panel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
     QVBoxLayout *pLay = new QVBoxLayout(panel);
-    pLay->setSpacing(12);
+    pLay->setSpacing(10);
+    pLay->setContentsMargins(4, 4, 4, 4);
 
     QGroupBox *gbConf = new QGroupBox("Configurar transferencia");
     gbConf->setStyleSheet(estiloGroupBox());
     QFormLayout *fLay = new QFormLayout(gbConf);
-    fLay->setSpacing(10);
-    fLay->setContentsMargins(16, 20, 16, 16);
+    fLay->setSpacing(8);
+    fLay->setContentsMargins(12, 14, 12, 14);
+    fLay->setLabelAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    fLay->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
 
     QComboBox *cOrigen  = new QComboBox(); cOrigen->setStyleSheet(cstyle);
     QComboBox *cDestino = new QComboBox(); cDestino->setStyleSheet(cstyle);
@@ -1429,33 +1446,128 @@ QWidget* MainWindow::crearTabTransferencia() {
     QHBoxLayout *rhLay = new QHBoxLayout();
     rhLay->addWidget(rTiempo); rhLay->addWidget(rCosto);
 
-    fLay->addRow("Origen:",    cOrigen);
-    fLay->addRow("Destino:",   cDestino);
-    fLay->addRow("Código:",    eCodigo);
-    fLay->addRow("Unidades:",  eUnidades);
-    fLay->addRow("Criterio:",  rhLay);
+    // Selector de velocidad de simulación
+    QComboBox *cmbVelocidad = new QComboBox();
+    cmbVelocidad->addItem("1x — tiempo real (lento)", 1);
+    cmbVelocidad->addItem("10x — moderado",            10);
+    cmbVelocidad->addItem("30x — recomendado",         30);
+    cmbVelocidad->addItem("60x — rápido",              60);
+    cmbVelocidad->addItem("120x — muy rápido",         120);
+    cmbVelocidad->setCurrentIndex(2); // 30x default
+    cmbVelocidad->setStyleSheet(cstyle);
 
-    QPushButton *btnCalc  = new QPushButton("⟶  Calcular ruta óptima");
-    QPushButton *btnTrans = new QPushButton("✓  Ejecutar transferencia");
+    auto mkLabel = [](const QString &t) {
+        QLabel *l = new QLabel(t);
+        l->setMinimumWidth(72);
+        l->setStyleSheet(QString("color: %1; font-weight: bold; font-size: 12px;")
+                             .arg(TEXTO_NEGRO));
+        return l;
+    };
+    fLay->addRow(mkLabel("Origen:"),    cOrigen);
+    fLay->addRow(mkLabel("Destino:"),   cDestino);
+
+    // Separador visual entre destino y datos del producto
+    QFrame *sep1 = new QFrame();
+    sep1->setFrameShape(QFrame::HLine);
+    sep1->setStyleSheet(QString("color: %1;").arg(GRIS_BORDE));
+    fLay->addRow(sep1);
+
+    fLay->addRow(mkLabel("Código:"),    eCodigo);
+    fLay->addRow(mkLabel("Unidades:"),  eUnidades);
+
+    // Separador visual antes de opciones
+    QFrame *sep2 = new QFrame();
+    sep2->setFrameShape(QFrame::HLine);
+    sep2->setStyleSheet(QString("color: %1;").arg(GRIS_BORDE));
+    fLay->addRow(sep2);
+
+    fLay->addRow(mkLabel("Criterio:"),  rhLay);
+    fLay->addRow(mkLabel("Velocidad:"), cmbVelocidad);
+
+    QPushButton *btnCalc   = new QPushButton("⟶  Calcular ruta óptima");
+    QPushButton *btnTrans  = new QPushButton("▶  Simular transferencia");
+    QPushButton *btnCancel = new QPushButton("✕  Cancelar simulación");
     btnCalc->setStyleSheet(estiloBoton(AZUL_MEDIO));
     btnTrans->setStyleSheet(estiloBoton(VERDE));
+    btnCancel->setStyleSheet(estiloBoton(ROJO));
     btnTrans->setEnabled(false);
+    btnCancel->setEnabled(false);
+    // Separador antes de botones
+    QFrame *sep3 = new QFrame();
+    sep3->setFrameShape(QFrame::HLine);
+    sep3->setStyleSheet(QString("color: %1;").arg(GRIS_BORDE));
+    fLay->addRow(sep3);
+
+    btnCalc->setMinimumHeight(36);
+    btnTrans->setMinimumHeight(36);
+    btnCancel->setMinimumHeight(36);
     fLay->addRow("", btnCalc);
     fLay->addRow("", btnTrans);
+    fLay->addRow("", btnCancel);
     pLay->addWidget(gbConf);
 
-    QGroupBox *gbColas = new QGroupBox("Estado de colas");
+    // Panel del estado actual de la simulación
+    QGroupBox *gbEstado = new QGroupBox("Estado de la simulación");
+    gbEstado->setStyleSheet(estiloGroupBox());
+    QVBoxLayout *estLay = new QVBoxLayout(gbEstado);
+    estLay->setContentsMargins(12, 16, 12, 12);
+
+    // Badge: estado del producto
+    QLabel *lblEstadoProd = new QLabel("Sin simulación activa");
+    lblEstadoProd->setAlignment(Qt::AlignCenter);
+    lblEstadoProd->setStyleSheet(QString(
+                                     "background: %1; color: white; font-weight: bold;"
+                                     " padding: 8px; border-radius: 4px; font-size: 13px;"
+                                     ).arg("#888"));
+    estLay->addWidget(lblEstadoProd);
+
+    // Sucursal actual
+    QLabel *lblSucActual = new QLabel("Sucursal actual: —");
+    lblSucActual->setStyleSheet(QString(
+                                    "color: %1; font-size: 12px; padding: 4px;").arg(TEXTO_NEGRO));
+    estLay->addWidget(lblSucActual);
+
+    // Barra de progreso
+    QProgressBar *barraProg = new QProgressBar();
+    barraProg->setRange(0, 100);
+    barraProg->setValue(0);
+    barraProg->setStyleSheet(QString(
+                                 "QProgressBar { border: 1px solid %1; border-radius: 4px;"
+                                 " text-align: center; color: %2; background: white;}"
+                                 "QProgressBar::chunk { background: %3; }"
+                                 ).arg(GRIS_BORDE).arg(TEXTO_NEGRO).arg(AZUL_MEDIO));
+    estLay->addWidget(barraProg);
+
+    // Log de eventos
+    QLabel *lblLogTit = new QLabel("Log de eventos:");
+    lblLogTit->setStyleSheet(QString(
+                                 "color: %1; font-weight: bold; font-size: 11px; padding-top: 6px;"
+                                 ).arg(TEXTO_NEGRO));
+    estLay->addWidget(lblLogTit);
+
+    QTextEdit *txtLog = new QTextEdit();
+    txtLog->setReadOnly(true);
+    txtLog->setStyleSheet(estiloTextEdit());
+    txtLog->setFixedHeight(110);
+    estLay->addWidget(txtLog);
+
+    pLay->addWidget(gbEstado);
+
+    // Panel resumen de colas (números actuales por sucursal)
+    QGroupBox *gbColas = new QGroupBox("Colas por sucursal");
     gbColas->setStyleSheet(estiloGroupBox());
     QVBoxLayout *colasLay = new QVBoxLayout(gbColas);
     colasLay->setContentsMargins(12, 16, 12, 12);
     QTextEdit *txtColas = new QTextEdit();
     txtColas->setReadOnly(true);
     txtColas->setStyleSheet(estiloTextEdit());
-    txtColas->setFixedHeight(180);
+    txtColas->setFixedHeight(85);
     colasLay->addWidget(txtColas);
     pLay->addWidget(gbColas);
     pLay->addStretch();
-    lay->addWidget(panel);
+
+    scrollPanel->setWidget(panel);
+    lay->addWidget(scrollPanel);
 
     // Panel derecho
     QWidget *panelRes = new QWidget();
@@ -1634,26 +1746,154 @@ QWidget* MainWindow::crearTabTransferencia() {
         txtDet->setText(det);
     });
 
+    // Simulador persistente (vive lo mismo que el tab)
+    SimuladorTransferencia *sim = new SimuladorTransferencia(w);
+
+    // Función para refrescar el panel "Colas por sucursal" en vivo
+    auto refrescarPanelColas = [=]() {
+        QString info;
+        for (Sucursal *s : red->obtenerSucursales()) {
+            int ing = s->getColaIngreso().obtenerTamano();
+            int tra = s->getColaTraspaso().obtenerTamano();
+            int sal = s->getColaSalida().obtenerTamano();
+            // Resaltar sucursales con productos en sus colas
+            QString prefix = (ing+tra+sal > 0) ? "►" : " ";
+            info += QString("%1 [%2]  ing:%3  tras:%4  sal:%5\n")
+                        .arg(prefix).arg(QString::fromStdString(s->getId()))
+                        .arg(ing).arg(tra).arg(sal);
+        }
+        if (info.isEmpty()) info = "Sin sucursales.";
+        txtColas->setText(info);
+    };
+
+    // Color del badge según etapa
+    auto colorEtapa = [](int etapa) -> QString {
+        switch (etapa) {
+        case SimuladorTransferencia::INGRESO:   return "#1976D2"; // azul
+        case SimuladorTransferencia::TRASPASO:  return "#F57C00"; // naranja
+        case SimuladorTransferencia::DESPACHO:  return "#7B1FA2"; // morado
+        case SimuladorTransferencia::EN_VIAJE:  return "#C62828"; // rojo
+        case SimuladorTransferencia::ENTREGADO: return "#2E7D32"; // verde
+        default: return "#888";
+        }
+    };
+    auto textoEtapa = [](int etapa) -> QString {
+        switch (etapa) {
+        case SimuladorTransferencia::INGRESO:   return "EN INGRESO";
+        case SimuladorTransferencia::TRASPASO:  return "EN TRASPASO";
+        case SimuladorTransferencia::DESPACHO:  return "EN DESPACHO";
+        case SimuladorTransferencia::EN_VIAJE:  return "EN VIAJE";
+        case SimuladorTransferencia::ENTREGADO: return "ENTREGADO";
+        default: return "—";
+        }
+    };
+
+    // Conectar las señales del simulador con la GUI
+    QObject::connect(sim, &SimuladorTransferencia::log,
+                     [=](const QString &msg) {
+                         QString hora = QDateTime::currentDateTime().toString("HH:mm:ss");
+                         txtLog->append(QString("[%1] %2").arg(hora).arg(msg));
+                         refrescarPanelColas();
+                     });
+
+    QObject::connect(sim, &SimuladorTransferencia::etapaIniciada,
+                     [=](const QString &sucId, int etapa, const QString &mensaje) {
+                         lblSucActual->setText("Sucursal actual: " + sucId);
+                         lblEstadoProd->setText(textoEtapa(etapa));
+                         lblEstadoProd->setStyleSheet(QString(
+                                                          "background: %1; color: white; font-weight: bold;"
+                                                          " padding: 8px; border-radius: 4px; font-size: 13px;"
+                                                          ).arg(colorEtapa(etapa)));
+
+                         // Calcular progreso aproximado
+                         int n = (int)estado->ruta.nodos.size();
+                         int idxNodo = estado->ruta.nodos.size();
+                         for (int i = 0; i < n; i++) {
+                             if (QString::fromStdString(estado->ruta.nodos[i]) == sucId) {
+                                 idxNodo = i; break;
+                             }
+                         }
+                         int prog = (n > 1) ? (idxNodo * 100) / (n - 1) : 100;
+                         barraProg->setValue(prog);
+                         barraProg->setFormat(QString("Tramo %1 de %2 — %p%")
+                                                  .arg(idxNodo + 1).arg(n));
+                         (void)mensaje;
+                     });
+
+    QObject::connect(sim, &SimuladorTransferencia::productoEnTransito,
+                     [=](const QString &origen, const QString &destino) {
+                         lblSucActual->setText(
+                             QString("En tránsito: %1 → %2").arg(origen).arg(destino));
+                     });
+
+    QObject::connect(sim, &SimuladorTransferencia::simulacionCompletada,
+                     [=](bool exitosa) {
+                         btnTrans->setEnabled(false);
+                         btnCancel->setEnabled(false);
+                         btnCalc->setEnabled(true);
+                         cOrigen->setEnabled(true);
+                         cDestino->setEnabled(true);
+                         eCodigo->setEnabled(true);
+                         eUnidades->setEnabled(true);
+
+                         if (exitosa) {
+                             lblEstadoProd->setText("ENTREGADO ✓");
+                             lblEstadoProd->setStyleSheet(QString(
+                                                              "background: %1; color: white; font-weight: bold;"
+                                                              " padding: 8px; border-radius: 4px; font-size: 13px;"
+                                                              ).arg("#2E7D32"));
+                             barraProg->setValue(100);
+                             barraProg->setFormat("Completada");
+                             emit redActualizada();
+                         } else {
+                             lblEstadoProd->setText("CANCELADA");
+                             lblEstadoProd->setStyleSheet(QString(
+                                                              "background: %1; color: white; font-weight: bold;"
+                                                              " padding: 8px; border-radius: 4px; font-size: 13px;"
+                                                              ).arg("#888"));
+                             barraProg->setValue(0);
+                         }
+                         refrescarPanelColas();
+                     });
+
+    // Botón Simular: arranca la simulación animada
     connect(btnTrans, &QPushButton::clicked, [=]() {
         if (!estado->ruta.encontrada) return;
         RedSucursales::Criterio crit = rTiempo->isChecked()
                                            ? RedSucursales::TIEMPO : RedSucursales::COSTO;
-        bool ok = red->transferirProducto(
-            estado->codigoBarra.toStdString(),
-            estado->origenId.toStdString(),
-            estado->destinoId.toStdString(),
-            crit,
-            eUnidades->value());
-        if (ok) {
-            QMessageBox::information(w, "Transferencia exitosa",
-                                     QString("Producto transferido de %1 a %2.")
-                                         .arg(estado->origenId).arg(estado->destinoId));
-            btnTrans->setEnabled(false);
-            emit redActualizada();
-        } else {
-            QMessageBox::warning(w, "Error", "No se pudo completar la transferencia.");
-        }
+
+        // Limpiar log y resetear UI
+        txtLog->clear();
+        barraProg->setValue(0);
+        lblEstadoProd->setText("INICIANDO...");
+        lblEstadoProd->setStyleSheet(QString(
+                                         "background: %1; color: white; font-weight: bold;"
+                                         " padding: 8px; border-radius: 4px; font-size: 13px;"
+                                         ).arg(AZUL_MEDIO));
+
+        // Bloquear inputs durante la simulación
+        btnTrans->setEnabled(false);
+        btnCalc->setEnabled(false);
+        btnCancel->setEnabled(true);
+        cOrigen->setEnabled(false);
+        cDestino->setEnabled(false);
+        eCodigo->setEnabled(false);
+        eUnidades->setEnabled(false);
+
+        sim->iniciar(red,
+                     estado->codigoBarra.toStdString(),
+                     estado->origenId.toStdString(),
+                     estado->destinoId.toStdString(),
+                     crit,
+                     eUnidades->value(),
+                     cmbVelocidad->currentData().toInt());
     });
+
+    // Botón Cancelar
+    connect(btnCancel, &QPushButton::clicked, [=]() { sim->cancelar(); });
+
+    // Inicializar panel de colas
+    refrescarPanelColas();
 
     connect(this, &MainWindow::redActualizada, refrescarCombosYColas);
     refrescarCombosYColas();

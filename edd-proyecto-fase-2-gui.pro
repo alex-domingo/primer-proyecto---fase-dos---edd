@@ -95,3 +95,8 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 # Fase 2 — CargadorRed
 HEADERS += $$PWD/include/CargadorRed.h
 SOURCES += $$PWD/src/CargadorRed.cpp
+
+
+# Fase 4 — Simulador de transferencia con animación
+HEADERS += $$PWD/include/SimuladorTransferencia.h
+SOURCES += $$PWD/src/SimuladorTransferencia.cpp
