@@ -6,9 +6,17 @@ Curso de Estructura de Datos
 
 ## Descripción
 
-Sistema de gestión de inventario multi-sucursal con interfaz gráfica Qt.
-La red de sucursales está modelada como un **grafo ponderado** con algoritmo **Dijkstra**.
-Cada sucursal administra su propio catálogo con **6 estructuras de datos** sincronizadas.
+Sistema de gestión de inventario **multi-sucursal** con interfaz gráfica Qt.
+La red de sucursales se modela como un **grafo ponderado** con algoritmo
+**Dijkstra** (optimizable por tiempo o costo). Cada sucursal administra su
+propio catálogo con **6 estructuras de datos sincronizadas**, además de
+**3 colas (FIFO)** y **1 pila (LIFO)** para el flujo de productos y el control
+de cambios.
+
+El sistema simula visualmente el traslado de productos entre sucursales,
+respetando los tiempos de procesamiento de cada etapa (ingreso, traspaso,
+despacho) y el intervalo de despacho, todo escalable por un factor de
+aceleración.
 
 ---
 
@@ -18,32 +26,26 @@ Cada sucursal administra su propio catálogo con **6 estructuras de datos** sinc
 edd-proyecto-fase-2-gui/
 ├── edd-proyecto-fase-2-gui.pro   ← archivo de proyecto Qt
 ├── main.cpp                      ← punto de entrada
-├── mainwindow.h / .cpp / .ui     ← ventana principal (7 tabs)
+├── mainwindow.h / .cpp / .ui     ← ventana principal (9 tabs)
 │
-├── core/                         ← Fase 1 (sin cambios estructurales)
+├── core/                         ← Estructuras base (Fase 1)
 │   ├── include/                  ← 16 headers
 │   └── src/                      ← 16 implementaciones
+│       Producto, Catalogo, ListaSimple, ListaOrdenada,
+│       ArbolAVL, ArbolB, ArbolBPlus, TablaHash (+ nodos),
+│       CargadorCSV, MedidorRendimiento, VisualizadorDot
 │
-├── include/                      ← Clases nuevas Fase 2
-│   ├── Cola.h                    ← FIFO genérica (template)
-│   ├── Pila.h                    ← LIFO genérica (template)
-│   ├── Operacion.h               ← registro de historial
-│   ├── Sucursal.h                ← nodo de la red
-│   ├── RedSucursales.h           ← grafo + Dijkstra
-│   ├── CargadorRed.h             ← carga de 3 CSV
-│   └── SimuladorTransferencia.h  ← máquina de estados Qt
+├── include/ + src/               ← Clases nuevas Fase 2
+│   ├── Cola.h                    ← FIFO genérica (template, header-only)
+│   ├── Pila.h                    ← LIFO genérica (template, header-only)
+│   ├── Operacion.h               ← registro de historial (rollback)
+│   ├── Sucursal.{h,cpp}          ← nodo de la red (catálogo + colas + pila)
+│   ├── RedSucursales.{h,cpp}     ← grafo + Dijkstra + transferencias pendientes
+│   ├── CargadorRed.{h,cpp}       ← carga flexible de 3 CSV con validaciones
+│   └── SimuladorTransferencia.{h,cpp}  ← máquina de estados Qt (lotes animados)
+│   
 │
-├── src/
-│   ├── Sucursal.cpp
-│   ├── RedSucursales.cpp
-│   ├── CargadorRed.cpp
-│   └── SimuladorTransferencia.cpp
-│
-├── data/
-│   ├── sucursales.csv            ← 7 sucursales guatemaltecas
-│   ├── conexiones.csv            ← 10 conexiones con tiempo y costo
-│   └── productos_fase2.csv      ← 1050 productos distribuidos
-│
+├── data/                         ← CSV de muestra (varios formatos)
 ├── output/                       ← archivos .dot y .png generados
 └── docs/                         ← documentación del proyecto
 ```
@@ -55,77 +57,128 @@ edd-proyecto-fase-2-gui/
 ### Requisitos
 - Qt Creator 6.x con MinGW 64-bit (Windows) o GCC (Linux)
 - C++17
+- Graphviz (opcional, solo para convertir los `.dot` a PNG)
 
-### Opción A — Qt Creator
+### En Qt Creator
 1. Abrir `edd-proyecto-fase-2-gui.pro`
 2. Configurar el kit (MinGW 64-bit recomendado)
-3. Configurar el Working Directory en `$PROJECT_DIR$`
-4. Presionar **Run** (`Ctrl+R`)
+3. Configurar el **Working Directory** en `$PROJECT_DIR$`
+4. Tras cualquier cambio en el `.pro` o al agregar archivos: **Run qmake**
+5. Compilar (`Ctrl+B`) y ejecutar (`Ctrl+R`)
 
-> **Working Directory es obligatorio** para que el programa encuentre la carpeta `data/` al cargar los CSV.
+> **El Working Directory es obligatorio** para que el programa encuentre la
+> carpeta `data/` al cargar los CSV.
 
 ---
 
 ## Uso del sistema
 
-Al iniciar, el sistema arranca con la **red vacía**. Usar los botones del **Tab Sistema** para cargar datos.
+Al iniciar, el sistema arranca con la **red vacía**. Se usan los botones del
+**Tab Sistema** para cargar los datos.
 
 ### Tabs disponibles
 
 | Tab | Funcionalidad |
 |-----|---------------|
-| Sistema | Carga de CSV, estadísticas, estado de estructuras |
-| Sucursales | CRUD de sucursales, inventario por sucursal |
-| Red | Visualización del grafo, CRUD de conexiones |
-| Inventario | Búsqueda global con 4 criterios, agregar/eliminar productos |
-| Transferencia | Cálculo de ruta óptima, simulación animada |
-| Rendimiento | Benchmark de 4 estructuras (Lista Simple, Lista Ordenada, AVL, Hash) |
-| Visualización | Generación de archivos .dot y PNG con Graphviz |
+| **Sistema** | Carga de CSV (individual o "Cargar Todo"), estadísticas, estado de estructuras |
+| **Sucursales** | CRUD de sucursales, inventario por sucursal con búsqueda en tiempo real |
+| **Red** | Visualización del grafo, CRUD de conexiones (bidireccionales/unidireccionales) |
+| **Inventario** | Búsqueda global con 4 criterios (AVL, Hash, B+, B), agregar/eliminar productos |
+| **Transferencia** | Cálculo de ruta óptima + simulación animada **por lotes** (multi-selección) |
+| **Operaciones** | Colas en vivo (FIFO) + pila de operaciones (LIFO) + devoluciones animadas |
+| **Procesos (hilos)** | Transferencias pendientes agrupadas por origen→destino, procesadas por grupo |
+| **Rendimiento** | Benchmark de 4 estructuras (Lista Simple, Lista Ordenada, AVL, Hash) |
+| **Visualización** | Generación de `.dot` y PNG con Graphviz (AVL, B, B+, grafo) |
 
 ### Carga de datos
 
-El Tab Sistema ofrece cuatro opciones:
+El Tab Sistema ofrece carga individual de cada CSV o **"Cargar Todo"** (los tres
+de una vez). El orden importa: **sucursales → conexiones → productos**.
 
-- **Cargar Sucursales** — abre `sucursales.csv`
-- **Cargar Conexiones** — abre `conexiones.csv` (requiere sucursales previas)
-- **Cargar Productos** — abre `productos_fase2.csv`
-- **⚡ Cargar Todo** — carga los tres CSV default de una vez
+Los cargadores son **flexibles** y detectan el formato automáticamente:
+- **Conexiones:** acepta 4 columnas (bidireccional por defecto) o 5 (con campo explícito)
+- **Productos:** acepta 8 columnas, 9 (con Estado) o el formato **entrada/salida**
 
-### Transferencia de productos
+Las líneas mal formadas se omiten y se registran en `data/errors_red.log`,
+sin detener la carga (rollback parcial).
 
-1. Seleccionar sucursal origen y destino
-2. Ingresar el código de barra del producto (10 dígitos)
-3. Elegir criterio: minimizar tiempo o costo
-4. Clic en **Calcular ruta óptima** — muestra el camino con pesos
-5. Ajustar las unidades a transferir
-6. Elegir velocidad de simulación (1x a 120x)
-7. Clic en **Simular transferencia** — animación en tiempo real
+---
+
+## Flujo de colas (FIFO) y pila (LIFO)
+
+### Las 3 colas por sucursal
+
+Durante una transferencia, cada producto atraviesa las colas según el **rol**
+de la sucursal en la ruta:
+
+| Rol | Flujo |
+|-----|-------|
+| **Origen** | Ingreso → Salida → viaja (sin traspaso) |
+| **Intermedia** | Ingreso → Traspaso → Salida → viaja |
+| **Destino** | Ingreso → se almacena en el inventario |
+
+Los productos se procesan **uno a uno** en cada cola, esperando el tiempo
+correspondiente (ingreso, traspaso o intervalo de despacho), lo que hace
+visible el comportamiento FIFO. En el Tab Operaciones, el **frente** de cada
+cola (próximo a salir) se resalta en verde y el **final** (último en entrar)
+en azul.
+
+### La pila de operaciones (LIFO)
+
+Cada operación (agregar, eliminar, transferir, devolver) se apila para permitir
+**rollback**. La cima (próxima a deshacer) se resalta en naranja. El botón
+"Deshacer última operación" saca de la cima, mostrando el comportamiento LIFO.
+
+---
+
+## Transferencias
+
+### Por lotes (Tab Transferencia)
+1. Seleccionar origen y destino
+2. Marcar uno o varios productos con checkboxes (o "Lote demo")
+3. Elegir criterio (tiempo/costo) y velocidad (1x–120x)
+4. **Calcular ruta óptima** → muestra el camino con pesos
+5. **Simular transferencia del lote** → animación con FIFO visible
+
+### Por grupos pendientes (Tab Procesos)
+Cuando un producto se carga con **sucursal de entrada distinta a la de salida**
+(formato CSV entrada/salida), queda como transferencia pendiente. El Tab Procesos
+las **agrupa por par origen→destino** y permite procesar un grupo a la vez,
+evitando que las colas de distintas rutas se mezclen.
+
+### Devoluciones (Tab Operaciones)
+Una devolución envía el producto de vuelta a su **sucursal de entrada original**,
+viajando por la red como una transferencia animada. Queda registrada en la pila
+para rollback.
 
 ---
 
 ## Estructuras de datos
 
-### Fase 1 (por sucursal)
+### Por sucursal (6 estructuras sincronizadas)
 
-| Estructura | Clave | Complejidad |
-|-----------|-------|-------------|
-| Lista Simple | — | O(1) inserción, O(n) búsqueda |
-| Lista Ordenada | Nombre | O(n) inserción, O(n) búsqueda* |
+| Estructura | Clave | Complejidad búsqueda |
+|-----------|-------|----------------------|
+| Lista Simple | — | O(n) |
+| Lista Ordenada | Nombre | O(n) con corte anticipado |
 | Árbol AVL | Nombre | O(log n) |
-| Árbol B (t=3) | Fecha caducidad | O(log n+k) rango |
-| Árbol B+ (t=3) | Categoría | O(log n+k) categoría |
+| Árbol B (t=3) | Fecha caducidad | O(log n + k) por rango |
+| Árbol B+ (t=3) | Categoría | O(log n + k) por categoría |
 | Tabla Hash | Código de barra | O(1) amortizado |
 
-\* Con corte anticipado
+> Las 6 estructuras se insertan de forma **atómica con rollback**: si una falla
+> (nombre duplicado en AVL o código duplicado en Hash), se revierten todas.
+> El método `Catalogo::actualizarStock()` mantiene el stock sincronizado entre
+> las 6 estructuras.
 
-### Fase 2 (nuevas)
+### De red y flujo (Fase 2)
 
 | Estructura | Uso | Complejidad |
 |-----------|-----|-------------|
-| Cola\<T\> | Flujo de productos por sucursal | O(1) todas |
+| Cola\<T\> | Flujo de productos (3 por sucursal) | O(1) todas |
 | Pila\<T\> | Historial de operaciones (rollback) | O(1) todas |
-| Grafo (lista adyacencia) | Red de sucursales | O(V+E) recorrido |
-| Dijkstra | Ruta óptima tiempo/costo | O((V+E) log V) |
+| Grafo (lista de adyacencia) | Red de sucursales | O(V+E) recorrido |
+| Dijkstra | Ruta óptima por tiempo/costo | O((V+E) log V) |
 
 ---
 
@@ -133,23 +186,27 @@ El Tab Sistema ofrece cuatro opciones:
 
 ### sucursales.csv
 ```
-"ID","Nombre","Ubicacion","TiempoIngreso","TiempoTraspaso","TiempoDespacho"
+"ID","Nombre","Ubicación","t_ingreso","t_traspaso","t_despacho"
 "SUC01","Central Zona 1","Ciudad de Guatemala, Zona 1",30,45,20
 ```
 
-### conexiones.csv
+### conexiones.csv (4 o 5 columnas)
 ```
-"OrigenID","DestinoID","Tiempo","Costo","Bidireccional"
-"SUC01","SUC02",25,15.50,true
+"OrigenID","DestinoID","Tiempo","Costo"
+"SUC01","SUC02",25,15.50
 ```
+La 5ª columna opcional `"Bidireccional"` (true/false) permite conexiones
+unidireccionales. Sin ella, todas se asumen bidireccionales.
 
-### productos_fase2.csv
+### productos.csv (9 columnas — formato "hilos")
 ```
-"SucursalID","Nombre","CodigoBarra","Categoria","FechaCaducidad","Marca","Precio","Stock","Estado"
-"SUC01","Leche Entera","1234567890","Lacteos","2027-06-01","Dos Pinos",12.50,100,"Disponible"
+"SucursalEntradaId","SucursalSalidaId","Nombre","CodigoBarra","Categoria","FechaCaducidad","Marca","Precio","Stock"
+"SUC06","SUC07","Agua Pura","1000000000","Bebidas","2026-12-04","Gallo","112.40","149"
 ```
+Si **entrada = salida**, el producto se almacena directo en esa sucursal.
+Si **entrada ≠ salida**, queda como transferencia pendiente (Tab Procesos).
 
-> El código de barra debe tener **exactamente 10 dígitos**.
+> El cargador detecta el formato automáticamente leyendo el encabezado.
 
 ---
 
@@ -158,20 +215,26 @@ El Tab Sistema ofrece cuatro opciones:
 | Estado | Significado |
 |--------|------------|
 | `Disponible` | En inventario de una sucursal, listo para venta |
-| `EnTransito` | Moviéndose entre sucursales via simulación |
-| `Agotado` | Stock = 0 (calculado automáticamente) |
+| `EnTransito` | Moviéndose entre sucursales durante la simulación |
+| `Agotado` | Stock = 0 |
 
 ---
 
 ## Visualización de estructuras
 
-El Tab Visualización genera archivos `.dot` para Graphviz. Para convertirlos a PNG:
+El Tab Visualización genera archivos `.dot` para Graphviz y los convierte a PNG.
+Los árboles se generan **completos** (sin límite de nodos), con recorrido por
+niveles (BFS) que preserva la forma real del árbol.
 
 ```bash
-dot -Tpng output/avl.dot     -o output/avl.png
-dot -Tpng output/arbolB.dot  -o output/arbolB.png
-dot -Tpng output/arbolBP.dot -o output/arbolBP.png
+dot -Tpng output/avl.dot       -o output/avl.png
+dot -Tpng output/arbolB.dot    -o output/arbolB.png
+dot -Tpng output/arbolBP.dot   -o output/arbolBP.png
 dot -Tpng output/grafo_red.dot -o output/grafo_red.png
 ```
+
+En la visualización del AVL, los nodos desbalanceados (si los hubiera) se pintan
+de **rojo** — en un AVL sano todos los nodos salen azules, lo que confirma
+visualmente que el árbol respeta su invariante.
 
 Graphviz disponible en: https://graphviz.org/download/
