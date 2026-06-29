@@ -2987,9 +2987,9 @@ QWidget* MainWindow::crearTabEstructuras() {
             if (!s) return;
             VisualizadorDot viz("output");
             Catalogo *cat = s->getCatalogo();
-            if (arb == 0) { rutaDot = "output/avl.dot";    viz.generarAVL(cat->obtenerArbolAVL(), 30); }
-            else if (arb == 1) { rutaDot = "output/arbolB.dot";  viz.generarArbolB(cat->obtenerArbolB(), 20); }
-            else { rutaDot = "output/arbolBP.dot"; viz.generarArbolBPlus(cat->obtenerArbolBPlus(), 20); }
+            if (arb == 0) { rutaDot = "output/avl.dot";    viz.generarAVL(cat->obtenerArbolAVL()); }
+            else if (arb == 1) { rutaDot = "output/arbolB.dot";  viz.generarArbolB(cat->obtenerArbolB()); }
+            else { rutaDot = "output/arbolBP.dot"; viz.generarArbolBPlus(cat->obtenerArbolBPlus()); }
         }
         lblRuta->setText("Archivo generado: " + rutaDot);
         lblImg->setText(

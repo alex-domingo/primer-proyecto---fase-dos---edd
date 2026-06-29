@@ -1,0 +1,20 @@
+// Árbol B+ (t=3) completo
+// Convertir: dot -Tpng output/arbolBP.dot -o output/arbolBP.png
+digraph ArbolBPlus {
+    graph [label="Arbol B+  t=3  completo\nClave: categoria del producto" fontsize=14 rankdir=TB];
+    node  [fontname="Courier" fontsize=9];
+    edge  [];
+
+    bp0 [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" BGCOLOR="lightblue"><TR><TD>Carnes</TD><TD>Lacteos</TD><TD>Limpieza</TD><TD>Panaderia</TD></TR></TABLE>> shape=plaintext];
+    bp0 -> bph1879515535360 [style=dashed];
+    bp0 -> bph1879514827568 [style=dashed];
+    bp0 -> bph1879515560672 [style=dashed];
+    bp0 -> bph1879515600448 [style=dashed];
+    bp0 -> bph1879515605872 [style=dashed];
+
+    // --- Hojas enlazadas ---
+
+    { rank=same; }
+
+    leyenda [label="azul=nodo interno\nverde=hoja\nbold green=enlace siguiente" shape=note style=filled fillcolor=lightyellow];
+}
