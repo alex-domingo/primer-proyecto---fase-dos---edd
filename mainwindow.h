@@ -34,6 +34,8 @@ public:
 
 signals:
     void redActualizada();
+    // Se emite durante la simulación para refrescar las colas en vivo
+    void colasActualizadas();
 
 private slots:
     void onRedActualizada();
@@ -54,6 +56,8 @@ private:
     QWidget* crearTabRed();
     QWidget* crearTabInventario();
     QWidget* crearTabTransferencia();
+    QWidget* crearTabOperaciones();
+    QWidget* crearTabProcesos();
     QWidget* crearTabRendimiento();
     QWidget* crearTabEstructuras();
 

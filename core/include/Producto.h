@@ -24,8 +24,16 @@ public:
     int         stock;
 
     // ── Fase 2 ──────────────────────────────────────────────
-    std::string sucursalId;    // ID de la sucursal propietaria
+    std::string sucursalId;    // ID de la sucursal donde reside actualmente
     std::string estado;        // "Disponible" | "EnTransito" | "Agotado"
+
+    // ── Fase 2 — destino final del producto ──────────────────
+    // sucursalEntradaId : dónde ingresa el producto a la red
+    // sucursalSalidaId  : destino final deseado
+    // Si entrada == salida → el producto se queda donde entró.
+    // Si entrada != salida → debe transferirse (proceso pendiente).
+    std::string sucursalEntradaId;
+    std::string sucursalSalidaId;
 
     // Constructor por defecto
     Producto();
@@ -49,6 +57,24 @@ public:
              int stock,
              const std::string &sucursalId,
              const std::string &estado = "Disponible");
+
+    // Constructor Fase 2 (lotes/hilos) — entrada y salida explícitas
+    Producto(const std::string &nombre,
+             const std::string &codigoBarra,
+             const std::string &categoria,
+             const std::string &fechaCaducidad,
+             const std::string &marca,
+             double precio,
+             int stock,
+             const std::string &sucursalEntradaId,
+             const std::string &sucursalSalidaId,
+             const std::string &estado);
+
+    // True si el producto debe transferirse (entrada != salida)
+    bool requiereTransferencia() const {
+        return !sucursalSalidaId.empty() &&
+               sucursalEntradaId != sucursalSalidaId;
+    }
 
     void mostrar() const;
 

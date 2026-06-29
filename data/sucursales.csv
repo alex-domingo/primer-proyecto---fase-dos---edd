@@ -1,4 +1,4 @@
-"ID","Nombre","Ubicacion","TiempoIngreso","TiempoTraspaso","TiempoDespacho"
+"ID","Nombre","Ubicación","t_ingreso","t_traspaso","t_despacho"
 "SUC01","Central Zona 1","Ciudad de Guatemala, Zona 1",30,45,20
 "SUC02","Norte Zona 18","Ciudad de Guatemala, Zona 18",25,40,15
 "SUC03","Sur Villa Nueva","Villa Nueva, Guatemala",35,50,25

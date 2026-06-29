@@ -98,6 +98,19 @@ public:
     bool hayOperacionesPendientes() const;
     int  contarOperaciones() const;
 
+    // Devuelve copia del historial de operaciones (cima → fondo)
+    void obtenerHistorial(Operacion *destino, int maxItems) const {
+        pilaOperaciones.obtenerContenido(destino, maxItems);
+    }
+
+    // ── Devolución de productos ───────────────────────────────
+    // Registra una devolución: el producto vuelve al inventario
+    // y se apila la operación para poder deshacerla.
+    bool devolverProducto(const std::string &codigo, int unidades);
+
+    // Acceso de solo lectura a la pila (para snapshot)
+    const Pila<Operacion>& getPilaOperaciones() const { return pilaOperaciones; }
+
     void mostrar() const;
 };
 

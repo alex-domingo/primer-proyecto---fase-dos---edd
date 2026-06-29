@@ -62,6 +62,17 @@ public:
 
     bool estaVacia() const { return tamano == 0; }
     int  obtenerTamano() const { return tamano; }
+
+    // Devuelve copia del contenido en orden FIFO (frente → final)
+    // sin modificar la cola. Útil para visualización.
+    void obtenerContenido(T *destino, int maxItems) const {
+        NodoCola *actual = cabeza;
+        int i = 0;
+        while (actual != nullptr && i < maxItems) {
+            destino[i++] = actual->dato;
+            actual = actual->siguiente;
+        }
+    }
 };
 
 #endif // COLA_H
