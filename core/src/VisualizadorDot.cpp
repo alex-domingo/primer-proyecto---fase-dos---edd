@@ -1,4 +1,5 @@
 #include "VisualizadorDot.h"
+#include <queue>
 #include <iostream>
 #include <sstream>
 
@@ -6,6 +7,13 @@
  * VisualizadorDot.cpp
  * --------------------
  * Genera archivos .dot legibles por Graphviz.
+ *
+ * Formato DOT básico:
+ *   digraph G {
+ *       node [shape=record];   // para nodos con múltiples campos
+ *       A [label="texto"];
+ *       A -> B;
+ *   }
  *
  * Para el AVL usamos shape=ellipse con el nombre del producto truncado.
  * Para el Árbol B y B+ usamos shape=record con celdas separadas por |
@@ -22,7 +30,7 @@ VisualizadorDot::VisualizadorDot(const std::string &carpeta)
 // Escapa caracteres que romperían el formato DOT
 std::string VisualizadorDot::escapar(const std::string &s) const {
     std::string resultado;
-    for (char c: s) {
+    for (char c : s) {
         if (c == '"' || c == '\\' || c == '<' || c == '>' ||
             c == '{' || c == '}' || c == '|') {
             resultado += '\\';
@@ -47,47 +55,63 @@ std::string VisualizadorDot::escapar(const std::string &s) const {
  */
 void VisualizadorDot::avlRec(std::ofstream &out, NodoAVL *nodo,
                              int &contador, int maxNodos) const {
-    if (nodo == nullptr || contador >= maxNodos) return;
-    contador++;
+    // Recorrido por NIVELES (BFS) en vez de preorden.
+    //
+    // Antes usábamos preorden con un límite de nodos, lo que gastaba
+    // todo el presupuesto en la rama izquierda y dejaba sin dibujar las
+    // ramas derechas de los nodos superiores. Eso daba la ILUSIÓN de un
+    // árbol en cadena lineal aunque estuviera balanceado.
+    //
+    // Con BFS dibujamos nivel por nivel: si hay que cortar por el límite,
+    // se corta abajo de forma pareja, preservando la forma real del árbol.
+    if (nodo == nullptr) return;
 
-    // Truncamos el nombre a 15 chars para que quepa en el nodo
-    std::string nombre = nodo->dato.nombre;
-    if (nombre.size() > 15) nombre = nombre.substr(0, 13) + "..";
+    // maxNodos == 0 significa SIN LÍMITE: usamos un tope efectivamente infinito
+    bool sinLimite = (maxNodos <= 0);
 
-    // Calculamos el balance del nodo para mostrarlo
-    int altIzq = (nodo->izquierda ? nodo->izquierda->altura : 0);
-    int altDer = (nodo->derecha ? nodo->derecha->altura : 0);
-    int balance = altIzq - altDer;
+    std::queue<NodoAVL*> cola;
+    cola.push(nodo);
 
-    // ID único del nodo (usamos el puntero como número)
-    out << "    n" << (size_t) nodo
+    while (!cola.empty() && (sinLimite || contador < maxNodos)) {
+        NodoAVL *actual = cola.front();
+        cola.pop();
+        contador++;
+
+        // Nombre truncado a 15 chars
+        std::string nombre = actual->dato.nombre;
+        if (nombre.size() > 15) nombre = nombre.substr(0, 13) + "..";
+
+        int altIzq = (actual->izquierda ? actual->izquierda->altura : 0);
+        int altDer = (actual->derecha  ? actual->derecha->altura  : 0);
+        int balance = altIzq - altDer;
+
+        // Detectar desbalance real: si |balance| > 1 el AVL estaría roto.
+        // Lo pintamos de rojo para que sea evidente (en un AVL sano no ocurre).
+        bool desbalanceado = (balance < -1 || balance > 1);
+
+        out << "    n" << (size_t)actual
             << " [label=\"" << escapar(nombre)
-            << "\\nalt=" << nodo->altura
+            << "\\nalt=" << actual->altura
             << " bal=" << balance << "\""
-            << " shape=ellipse";
+            << " shape=ellipse style=filled fillcolor=";
+        if (contador == 1)        out << "gold";       // raíz
+        else if (desbalanceado)   out << "\"#FF6B6B\""; // rojo: nodo roto
+        else                      out << "lightblue";  // nodo sano
+        out << "];\n";
 
-    // Colorear raíz de amarillo, resto blanco
-    if (contador == 1) {
-        out << " style=filled fillcolor=gold";
-    } else {
-        out << " style=filled fillcolor=lightblue";
-    }
-    out << "];\n";
-
-    // Arista al hijo izquierdo
-    if (nodo->izquierda && contador < maxNodos) {
-        out << "    n" << (size_t) nodo
-                << " -> n" << (size_t) nodo->izquierda
+        // Encolar hijos y dibujar sus aristas
+        if (actual->izquierda && (sinLimite || contador < maxNodos)) {
+            out << "    n" << (size_t)actual
+                << " -> n" << (size_t)actual->izquierda
                 << " [label=\"izq\" color=blue];\n";
-        avlRec(out, nodo->izquierda, contador, maxNodos);
-    }
-
-    // Arista al hijo derecho
-    if (nodo->derecha && contador < maxNodos) {
-        out << "    n" << (size_t) nodo
-                << " -> n" << (size_t) nodo->derecha
+            cola.push(actual->izquierda);
+        }
+        if (actual->derecha && (sinLimite || contador < maxNodos)) {
+            out << "    n" << (size_t)actual
+                << " -> n" << (size_t)actual->derecha
                 << " [label=\"der\" color=darkorange];\n";
-        avlRec(out, nodo->derecha, contador, maxNodos);
+            cola.push(actual->derecha);
+        }
     }
 }
 
@@ -99,12 +123,11 @@ bool VisualizadorDot::generarAVL(ArbolAVL *avl, int maxNodos) const {
         return false;
     }
 
-    out << "// Árbol AVL — primeros " << maxNodos << " nodos\n";
+    out << "// Árbol AVL completo\n";
     out << "// Convertir: dot -Tpng output/avl.dot -o output/avl.png\n";
     out << "digraph AVL {\n";
-    out << "    graph [label=\"Arbol AVL (primeros " << maxNodos
-            << " nodos)\\nClave: nombre del producto\""
-            << " fontsize=14 rankdir=TB];\n";
+    out << "    graph [label=\"Arbol AVL completo\\nClave: nombre del producto\""
+        << " fontsize=14 rankdir=TB];\n";
     out << "    node  [fontname=\"Helvetica\" fontsize=10];\n";
     out << "    edge  [fontsize=8];\n\n";
 
@@ -115,9 +138,9 @@ bool VisualizadorDot::generarAVL(ArbolAVL *avl, int maxNodos) const {
         avlRec(out, avl->obtenerRaiz(), contador, maxNodos);
         out << "\n    // Leyenda\n";
         out << "    leyenda [label=\"Leyenda:\\n"
-                "gold = raiz | lightblue = nodo\\n"
-                "alt = altura | bal = balance\""
-                " shape=note style=filled fillcolor=lightyellow];\n";
+               "gold = raiz | lightblue = nodo sano\\n"
+               "rojo = desbalanceado | alt = altura | bal = balance\""
+               " shape=note style=filled fillcolor=lightyellow];\n";
     }
 
     out << "}\n";
@@ -142,7 +165,8 @@ bool VisualizadorDot::generarAVL(ArbolAVL *avl, int maxNodos) const {
 void VisualizadorDot::arbolBRec(std::ofstream &out, NodoB *nodo,
                                 int &idNodo, int &contador,
                                 int maxNodos) const {
-    if (nodo == nullptr || contador >= maxNodos) return;
+    bool sinLimite = (maxNodos <= 0);
+    if (nodo == nullptr || (!sinLimite && contador >= maxNodos)) return;
     contador++;
 
     int miId = idNodo++;
@@ -150,8 +174,8 @@ void VisualizadorDot::arbolBRec(std::ofstream &out, NodoB *nodo,
     // HTML-like label: cada clave en su propia celda (más robusto que record)
     std::string bgColor = nodo->esHoja ? "palegreen" : "lightblue";
     out << "    b" << miId
-            << " [label=<<TABLE BORDER=\"0\" CELLBORDER=\"1\""
-            " CELLSPACING=\"0\" BGCOLOR=\"" << bgColor << "\"><TR>";
+        << " [label=<<TABLE BORDER=\"0\" CELLBORDER=\"1\""
+           " CELLSPACING=\"0\" BGCOLOR=\"" << bgColor << "\"><TR>";
     for (int i = 0; i < nodo->numClaves; i++) {
         // Fecha corta: "2026-05" en lugar del año completo para que quepa
         std::string fecha = nodo->claves[i];
@@ -162,7 +186,7 @@ void VisualizadorDot::arbolBRec(std::ofstream &out, NodoB *nodo,
 
     // Recursión en hijos con aristas (sin puertos :fN — plaintext no los tiene)
     if (!nodo->esHoja) {
-        for (int i = 0; i <= nodo->numClaves && contador < maxNodos; i++) {
+        for (int i = 0; i <= nodo->numClaves && (sinLimite || contador < maxNodos); i++) {
             if (nodo->hijos[i] == nullptr) continue;
 
             int hijoContadorAntes = contador;
@@ -184,12 +208,11 @@ bool VisualizadorDot::generarArbolB(ArbolB *arbolB, int maxNodos) const {
         return false;
     }
 
-    out << "// Árbol B (t=3) — primeros " << maxNodos << " nodos\n";
+    out << "// Árbol B (t=3) completo\n";
     out << "// Convertir: dot -Tpng output/arbolB.dot -o output/arbolB.png\n";
     out << "digraph ArbolB {\n";
-    out << "    graph [label=\"Arbol B  t=3  (primeros " << maxNodos
-            << " nodos)\\nClave: fecha de caducidad\""
-            << " fontsize=14 rankdir=TB];\n";
+    out << "    graph [label=\"Arbol B  t=3  completo\\nClave: fecha de caducidad\""
+        << " fontsize=14 rankdir=TB];\n";
     out << "    node  [fontname=\"Courier\" fontsize=9];\n";
     out << "    edge  [];\n\n";
 
@@ -199,7 +222,7 @@ bool VisualizadorDot::generarArbolB(ArbolB *arbolB, int maxNodos) const {
         int idNodo = 0, contador = 0;
         arbolBRec(out, arbolB->obtenerRaiz(), idNodo, contador, maxNodos);
         out << "\n    leyenda [label=\"verde=hoja | azul=interno\""
-                " shape=note style=filled fillcolor=lightyellow];\n";
+               " shape=note style=filled fillcolor=lightyellow];\n";
     }
 
     out << "}\n";
@@ -228,15 +251,16 @@ void VisualizadorDot::arbolBPlusInternosRec(std::ofstream &out,
                                             NodoBPlus *nodo,
                                             int &idNodo, int &contador,
                                             int maxNodos) const {
-    if (nodo == nullptr || nodo->esHoja || contador >= maxNodos) return;
+    bool sinLimite = (maxNodos <= 0);
+    if (nodo == nullptr || nodo->esHoja || (!sinLimite && contador >= maxNodos)) return;
     contador++;
 
     int miId = idNodo++;
 
     // HTML-like label para nodos internos (evita el bug de record+flat edges)
     out << "    bp" << miId
-            << " [label=<<TABLE BORDER=\"0\" CELLBORDER=\"1\""
-            " CELLSPACING=\"0\" BGCOLOR=\"lightblue\"><TR>";
+        << " [label=<<TABLE BORDER=\"0\" CELLBORDER=\"1\""
+           " CELLSPACING=\"0\" BGCOLOR=\"lightblue\"><TR>";
     for (int i = 0; i < nodo->numClaves; i++) {
         std::string clave = nodo->claves[i];
         if (clave.size() > 9) clave = clave.substr(0, 8) + ".";
@@ -244,7 +268,7 @@ void VisualizadorDot::arbolBPlusInternosRec(std::ofstream &out,
     }
     out << "</TR></TABLE>> shape=plaintext];\n";
 
-    for (int i = 0; i <= nodo->numClaves && contador < maxNodos; i++) {
+    for (int i = 0; i <= nodo->numClaves && (sinLimite || contador < maxNodos); i++) {
         if (nodo->hijos[i] == nullptr) continue;
 
         int hijoId = idNodo;
@@ -253,8 +277,8 @@ void VisualizadorDot::arbolBPlusInternosRec(std::ofstream &out,
         if (nodo->hijos[i]->esHoja) {
             // Arista sin puerto (plaintext no tiene puertos :fN)
             out << "    bp" << miId
-                    << " -> bph" << (size_t) nodo->hijos[i]
-                    << " [style=dashed];\n";
+                << " -> bph" << (size_t)nodo->hijos[i]
+                << " [style=dashed];\n";
         } else {
             arbolBPlusInternosRec(out, nodo->hijos[i], idNodo, contador, maxNodos);
             if (contador > antesContador) {
@@ -270,12 +294,22 @@ void VisualizadorDot::arbolBPlusHojas(std::ofstream &out,
     NodoBPlus *actual = primeraHoja;
     int contadorHojas = 0;
 
-    // Usamos HTML-like labels (<<TABLE>...>) en lugar de shape=record.
+    /*
+     * Usamos HTML-like labels (<<TABLE>...>) en lugar de shape=record.
+     * Graphviz falla con aristas horizontales entre nodos record del mismo
+     * rango ("flat edge between adjacent nodes with record shape").
+     * Los HTML-like labels evitan ese bug completamente.
+     *
+     * Formato:
+     *   node [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0">
+     *                <TR><TD>clave1</TD><TD>clave2</TD>...</TR>
+     *               </TABLE>>]
+     */
     while (actual != nullptr && contadorHojas < maxNodos) {
-        out << "    bph" << (size_t) actual
-                << " [label=<<TABLE BORDER=\"0\" CELLBORDER=\"1\""
-                " CELLSPACING=\"0\" BGCOLOR=\"palegreen\">"
-                "<TR>";
+        out << "    bph" << (size_t)actual
+            << " [label=<<TABLE BORDER=\"0\" CELLBORDER=\"1\""
+               " CELLSPACING=\"0\" BGCOLOR=\"palegreen\">"
+               "<TR>";
 
         for (int i = 0; i < actual->numClaves; i++) {
             std::string clave = actual->claves[i];
@@ -295,9 +329,9 @@ void VisualizadorDot::arbolBPlusHojas(std::ofstream &out,
     contadorHojas = 0;
     while (actual != nullptr && actual->siguiente != nullptr
            && contadorHojas < maxNodos - 1) {
-        out << "    bph" << (size_t) actual
-                << " -> bph" << (size_t) actual->siguiente
-                << " [style=bold color=darkgreen label=\"sig\"];\n";
+        out << "    bph" << (size_t)actual
+            << " -> bph" << (size_t)actual->siguiente
+            << " [style=bold color=darkgreen label=\"sig\"];\n";
         actual = actual->siguiente;
         contadorHojas++;
     }
@@ -307,7 +341,7 @@ void VisualizadorDot::arbolBPlusHojas(std::ofstream &out,
     actual = primeraHoja;
     contadorHojas = 0;
     while (actual != nullptr && contadorHojas < maxNodos) {
-        out << " bph" << (size_t) actual << ";";
+        out << " bph" << (size_t)actual << ";";
         actual = actual->siguiente;
         contadorHojas++;
     }
@@ -323,12 +357,11 @@ bool VisualizadorDot::generarArbolBPlus(ArbolBPlus *arbolBPlus,
         return false;
     }
 
-    out << "// Árbol B+ (t=3) — primeros " << maxNodos << " nodos\n";
+    out << "// Árbol B+ (t=3) completo\n";
     out << "// Convertir: dot -Tpng output/arbolBP.dot -o output/arbolBP.png\n";
     out << "digraph ArbolBPlus {\n";
-    out << "    graph [label=\"Arbol B+  t=3  (primeros " << maxNodos
-            << " nodos)\\nClave: categoria del producto\""
-            << " fontsize=14 rankdir=TB];\n";
+    out << "    graph [label=\"Arbol B+  t=3  completo\\nClave: categoria del producto\""
+        << " fontsize=14 rankdir=TB];\n";
     out << "    node  [fontname=\"Courier\" fontsize=9];\n";
     out << "    edge  [];\n\n";
 
@@ -349,9 +382,9 @@ bool VisualizadorDot::generarArbolBPlus(ArbolBPlus *arbolBPlus,
                         idNodo, maxNodos / 2);
 
         out << "\n    leyenda [label=\""
-                "azul=nodo interno\\nverde=hoja\\n"
-                "bold green=enlace siguiente\""
-                " shape=note style=filled fillcolor=lightyellow];\n";
+               "azul=nodo interno\\nverde=hoja\\n"
+               "bold green=enlace siguiente\""
+               " shape=note style=filled fillcolor=lightyellow];\n";
     }
 
     out << "}\n";
@@ -377,7 +410,7 @@ void VisualizadorDot::generarTodos(ArbolAVL *avl, ArbolB *arbolB,
 
     if (ok1 && ok2 && ok3) {
         std::cout << "\nTodos los archivos .dot generados en '"
-                << carpetaOutput << "/'.\n\n";
+                  << carpetaOutput << "/'.\n\n";
         std::cout << "Para convertir a PNG (requiere Graphviz instalado):\n";
         std::cout << "  dot -Tpng output/avl.dot    -o output/avl.png\n";
         std::cout << "  dot -Tpng output/arbolB.dot -o output/arbolB.png\n";

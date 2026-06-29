@@ -60,18 +60,19 @@ private:
 public:
     explicit VisualizadorDot(const std::string &carpeta = "output");
 
-    // Genera output/avl.dot con los primeros maxNodos nodos del AVL
-    bool generarAVL(ArbolAVL *avl, int maxNodos = 30) const;
+    // Genera output/avl.dot con el árbol AVL completo.
+    // maxNodos = 0 (default) significa SIN LÍMITE (todo el árbol).
+    bool generarAVL(ArbolAVL *avl, int maxNodos = 0) const;
 
-    // Genera output/arbolB.dot con los primeros maxNodos nodos del Árbol B
-    bool generarArbolB(ArbolB *arbolB, int maxNodos = 20) const;
+    // Genera output/arbolB.dot con el árbol B completo (0 = sin límite)
+    bool generarArbolB(ArbolB *arbolB, int maxNodos = 0) const;
 
-    // Genera output/arbolBP.dot con los primeros maxNodos nodos del Árbol B+
-    bool generarArbolBPlus(ArbolBPlus *arbolBPlus, int maxNodos = 20) const;
+    // Genera output/arbolBP.dot con el árbol B+ completo (0 = sin límite)
+    bool generarArbolBPlus(ArbolBPlus *arbolBPlus, int maxNodos = 0) const;
 
     // Genera los tres archivos de una vez y muestra instrucciones
     void generarTodos(ArbolAVL *avl, ArbolB *arbolB,
                       ArbolBPlus *arbolBPlus) const;
 };
 
-#endif //PROYECTO_EDD_VISUALIZADORDOT_H
+#endif // PROYECTO_EDD_VISUALIZADORDOT_H

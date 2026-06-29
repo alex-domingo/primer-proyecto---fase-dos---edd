@@ -1,0 +1,36 @@
+// Grafo de Red de Sucursales
+// dot -Tpng output/grafo_red.dot -o grafo.png
+digraph RedSucursales {
+    graph [label="Red de Sucursales" fontsize=14 rankdir=LR];
+    node  [shape=box style=filled fillcolor=lightblue fontname=Arial fontsize=11];
+    edge  [fontsize=9 fontname=Arial];
+
+    "SUC01" [label="SUC01\nCentral Zona 1\nCiudad de Guatemala, Zona 1\n178 productos"];
+    "SUC02" [label="SUC02\nNorte Zona 18\nCiudad de Guatemala, Zona 18\n161 productos"];
+    "SUC03" [label="SUC03\nSur Villa Nueva\nVilla Nueva, Guatemala\n120 productos"];
+    "SUC04" [label="SUC04\nOriente Mixco\nMixco, Guatemala\n164 productos"];
+    "SUC05" [label="SUC05\nOccidente Xela\nQuetzaltenango, Xela\n121 productos"];
+    "SUC06" [label="SUC06\nNorte Petén\nFlores, Petén\n0 productos"];
+    "SUC07" [label="SUC07\nCosta Sur Escuintla\nEscuintla, Guatemala\n0 productos"];
+
+    "SUC01" -> "SUC02" [label="t=25s\nc=Q15.5" dir=both];
+    "SUC01" -> "SUC03" [label="t=35s\nc=Q22" dir=both];
+    "SUC01" -> "SUC04" [label="t=20s\nc=Q12" dir=both];
+    "SUC01" -> "SUC07" [label="t=60s\nc=Q38" dir=both];
+    "SUC02" -> "SUC01" [label="t=25s\nc=Q15.5" dir=both];
+    "SUC02" -> "SUC04" [label="t=30s\nc=Q18" dir=both];
+    "SUC02" -> "SUC06" [label="t=180s\nc=Q95" dir=both];
+    "SUC03" -> "SUC01" [label="t=35s\nc=Q22" dir=both];
+    "SUC03" -> "SUC07" [label="t=40s\nc=Q25" dir=both];
+    "SUC03" -> "SUC04" [label="t=45s\nc=Q28" dir=both];
+    "SUC04" -> "SUC01" [label="t=20s\nc=Q12" dir=both];
+    "SUC04" -> "SUC02" [label="t=30s\nc=Q18" dir=both];
+    "SUC04" -> "SUC05" [label="t=150s\nc=Q80" dir=both];
+    "SUC04" -> "SUC03" [label="t=45s\nc=Q28" dir=both];
+    "SUC05" -> "SUC04" [label="t=150s\nc=Q80" dir=both];
+    "SUC05" -> "SUC06" [label="t=240s\nc=Q130" dir=both];
+    "SUC06" -> "SUC02" [label="t=180s\nc=Q95" dir=both];
+    "SUC06" -> "SUC05" [label="t=240s\nc=Q130" dir=both];
+    "SUC07" -> "SUC03" [label="t=40s\nc=Q25" dir=both];
+    "SUC07" -> "SUC01" [label="t=60s\nc=Q38" dir=both];
+}
