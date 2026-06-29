@@ -2048,11 +2048,7 @@ QWidget* MainWindow::crearTabOperaciones() {
     QLineEdit *eCodDev = new QLineEdit();
     eCodDev->setPlaceholderText("Código de barra");
     eCodDev->setStyleSheet(cstyle);
-    QSpinBox *eUnidDev = new QSpinBox();
-    eUnidDev->setRange(1, 99999);
-    eUnidDev->setValue(1);
-    eUnidDev->setStyleSheet(cstyle);
-    QPushButton *btnDevolver = new QPushButton("↩  Registrar devolución");
+    QPushButton *btnDevolver = new QPushButton("↩  Devolver a sucursal de origen");
     btnDevolver->setStyleSheet(estiloBoton(VERDE));
 
     auto mkLbl = [](const QString &t) {
@@ -2060,9 +2056,17 @@ QWidget* MainWindow::crearTabOperaciones() {
         l->setStyleSheet(QString("color: %1; font-weight: bold;").arg(TEXTO_NEGRO));
         return l;
     };
-    devLay->addRow(mkLbl("Código:"),   eCodDev);
-    devLay->addRow(mkLbl("Unidades:"), eUnidDev);
+    devLay->addRow(mkLbl("Código:"), eCodDev);
     devLay->addRow("", btnDevolver);
+
+    // Estado de la devolución (la devolución viaja como transferencia)
+    QLabel *lblDevEstado = new QLabel("Ingresá un código para devolver el producto "
+                                      "a su sucursal de entrada original.");
+    lblDevEstado->setWordWrap(true);
+    lblDevEstado->setStyleSheet(QString(
+                                    "color: %1; font-size: 11px; background: %2; padding: 6px; border-radius: 4px;"
+                                    ).arg(TEXTO_NEGRO).arg(GRIS_CLARO));
+    devLay->addRow("", lblDevEstado);
     pilaLay->addWidget(gbDev);
 
     splitter->addWidget(panelPila);
@@ -2260,6 +2264,32 @@ QWidget* MainWindow::crearTabOperaciones() {
     });
 
     // Registrar devolución
+    // Simulador para animar la devolución (viaja como transferencia)
+    SimuladorTransferencia *simDev = new SimuladorTransferencia(w);
+    QObject::connect(simDev, &SimuladorTransferencia::log, [=](const QString &msg) {
+        lblDevEstado->setText(msg);
+        emit colasActualizadas(); // refresca las colas en vivo
+    });
+    QObject::connect(simDev, &SimuladorTransferencia::etapaIniciada,
+                     [=](const QString &sucId, int etapa, const QString &) {
+                         QStringList etapas = {"Ingreso", "Traspaso", "Despacho", "En viaje", "Entregado"};
+                         QString nombreEtapa = (etapa >= 0 && etapa < etapas.size())
+                                                   ? etapas[etapa] : "?";
+                         lblDevEstado->setText(QString("Devolución en [%1]: %2")
+                                                   .arg(sucId).arg(nombreEtapa));
+                     });
+    QObject::connect(simDev, &SimuladorTransferencia::simulacionCompletada,
+                     [=](bool exitosa) {
+                         btnDevolver->setEnabled(true);
+                         if (exitosa) {
+                             lblDevEstado->setText("✔ Producto devuelto a su sucursal de origen.");
+                             emit redActualizada();
+                         } else {
+                             lblDevEstado->setText("✗ No se pudo completar la devolución.");
+                         }
+                         refrescarTodo();
+                     });
+
     connect(btnDevolver, &QPushButton::clicked, [=]() {
         QString sucId = cmbSuc->currentData().toString();
         Sucursal *s = red->buscarSucursal(sucId.toStdString());
@@ -2269,19 +2299,55 @@ QWidget* MainWindow::crearTabOperaciones() {
             QMessageBox::warning(w, "Error", "El código no puede estar vacío.");
             return;
         }
-        if (s->devolverProducto(cod.toStdString(), eUnidDev->value())) {
-            QMessageBox::information(w, "Devolución",
-                                     QString("Devolución registrada: %1 unidades del producto %2.")
-                                         .arg(eUnidDev->value()).arg(cod));
-            eCodDev->clear();
-            eUnidDev->setValue(1);
-            refrescarTodo();
-            emit redActualizada();
-        } else {
+
+        // Buscar el producto en la sucursal actual
+        Producto *p = s->buscarPorCodigo(cod.toStdString());
+        if (!p) {
             QMessageBox::warning(w, "Error",
                                  "No se encontró el producto en esta sucursal.\n"
-                                 "Solo se pueden devolver productos que ya existen en el inventario.");
+                                 "Solo se pueden devolver productos que existen en el inventario.");
+            return;
         }
+
+        // La devolución envía el producto a su sucursal de ENTRADA original
+        QString origenDest = QString::fromStdString(p->sucursalEntradaId);
+        if (origenDest.isEmpty()) {
+            QMessageBox::warning(w, "Sin sucursal de origen",
+                                 "Este producto no tiene registrada una sucursal de entrada distinta.\n"
+                                 "No se puede determinar a dónde devolverlo.");
+            return;
+        }
+        if (origenDest == sucId) {
+            QMessageBox::information(w, "Ya está en su origen",
+                                     QString("El producto ya se encuentra en su sucursal de entrada (%1).\n"
+                                             "No es necesario devolverlo.").arg(origenDest));
+            return;
+        }
+
+        // Verificar que exista ruta de vuelta
+        ResultadoRuta ruta = red->rutaOptima(
+            sucId.toStdString(), origenDest.toStdString(), RedSucursales::TIEMPO);
+        if (!ruta.encontrada) {
+            QMessageBox::warning(w, "Sin ruta",
+                                 QString("No existe una ruta de %1 a %2 para devolver el producto.")
+                                     .arg(sucId).arg(origenDest));
+            return;
+        }
+
+        int r = QMessageBox::question(w, "Confirmar devolución",
+                                      QString("El producto '%1' será devuelto de %2 a su sucursal de entrada %3.\n\n"
+                                              "Viajará por la red como una transferencia. ¿Continuar?")
+                                          .arg(QString::fromStdString(p->nombre)).arg(sucId).arg(origenDest));
+        if (r != QMessageBox::Yes) return;
+
+        // Iniciar la devolución animada (lote de 1 producto)
+        std::vector<std::string> lote = { cod.toStdString() };
+        btnDevolver->setEnabled(false);
+        lblDevEstado->setText(QString("Iniciando devolución de %1 a %2...")
+                                  .arg(sucId).arg(origenDest));
+        simDev->iniciar(red, lote, sucId.toStdString(), origenDest.toStdString(),
+                        RedSucursales::TIEMPO, 30);
+        eCodDev->clear();
     });
 
     // Auto-refresh cuando la red cambie

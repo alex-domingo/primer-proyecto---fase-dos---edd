@@ -183,22 +183,28 @@ void SimuladorTransferencia::procesarNodo() {
     int tIng = s->getTiempoIngreso();
 
     if (esDestino) {
-        // DESTINO: procesa el ingreso uno a uno pero el lote PERMANECE.
-        // No se desencola — los productos se quedan en la cola de ingreso.
+        // DESTINO: procesa el ingreso uno a uno. Cada producto se recibe,
+        // sale de la cola de ingreso y queda almacenado en el INVENTARIO
+        // de la sucursal (vía aplicarTransferenciaFinal). El producto
+        // "permanece" en la sucursal — en su inventario, no en la cola.
+        // Vaciar la cola es necesario para no bloquear futuras operaciones.
         for (int i = 0; i < total; i++) {
             QTimer::singleShot(msEscalado(tIng * (i + 1)), this, [=]() {
                 if (!activo) return;
-                emit productoDespachado(i + 1, total,
-                                        QString::fromStdString(lote[i].nombre));
-                emit log(QString("     INGRESO recibido [%1/%2]: %3")
-                             .arg(i + 1).arg(total)
-                             .arg(QString::fromStdString(lote[i].nombre)));
+                if (!s->getColaIngreso().estaVacia()) {
+                    QString nombreProd =
+                        QString::fromStdString(s->getColaIngreso().frente().nombre);
+                    s->getColaIngreso().desencolar();
+                    emit productoDespachado(i + 1, total, nombreProd);
+                    emit log(QString("     INGRESO recibido y almacenado [%1/%2]: %3")
+                                 .arg(i + 1).arg(total).arg(nombreProd));
+                }
                 if (i == total - 1) {
                     for (Producto &p : lote) p.estado = "Disponible";
                     emit etapaIniciada(sucId, ENTREGADO,
-                                       QString("[%1] %2 productos entregados (permanecen en ingreso)")
+                                       QString("[%1] %2 productos entregados y almacenados")
                                            .arg(sucId).arg(lote.size()));
-                    emit log(QString("  -> [%1] ENTREGADO — lote permanece en ingreso")
+                    emit log(QString("  -> [%1] ENTREGADO — lote almacenado en inventario")
                                  .arg(sucId));
                     aplicarTransferenciaFinal();
                     terminarSimulacion(true);
@@ -257,6 +263,10 @@ void SimuladorTransferencia::aplicarTransferenciaFinal() {
         int unidades = prod.stock; // transferimos el stock que tenía
         int stockRestante = pOrig->stock - unidades;
 
+        // Copia del producto transferido para registrar en las pilas
+        Producto registro = prod;
+        registro.stock = unidades;
+
         // Destino: sumar o crear
         Producto *pDest = destino->buscarPorCodigo(prod.codigoBarra);
         if (pDest) {
@@ -278,6 +288,17 @@ void SimuladorTransferencia::aplicarTransferenciaFinal() {
             origen->getCatalogo()->actualizarStock(
                 prod.codigoBarra, stockRestante);
         }
+
+        // ── Registrar en las pilas (LIFO) para que el historial refleje
+        //    el movimiento y se pueda hacer rollback ──
+        // En el ORIGEN: la salida del producto (TRANSFERIR hacia destino)
+        origen->registrarOperacion(
+            Operacion(Operacion::TRANSFERIR, registro, origenId, destinoId));
+        // En el DESTINO: la llegada del producto (AGREGAR al inventario)
+        registro.estado = "Disponible";
+        registro.sucursalId = destinoId;
+        destino->registrarOperacion(
+            Operacion(Operacion::AGREGAR, registro, destinoId));
     }
 }
 
