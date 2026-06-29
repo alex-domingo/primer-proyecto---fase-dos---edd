@@ -291,6 +291,7 @@ void VisualizadorDot::arbolBPlusInternosRec(std::ofstream &out,
 void VisualizadorDot::arbolBPlusHojas(std::ofstream &out,
                                       NodoBPlus *primeraHoja,
                                       int &idNodo, int maxNodos) const {
+    bool sinLimite = (maxNodos <= 0);
     NodoBPlus *actual = primeraHoja;
     int contadorHojas = 0;
 
@@ -299,13 +300,8 @@ void VisualizadorDot::arbolBPlusHojas(std::ofstream &out,
      * Graphviz falla con aristas horizontales entre nodos record del mismo
      * rango ("flat edge between adjacent nodes with record shape").
      * Los HTML-like labels evitan ese bug completamente.
-     *
-     * Formato:
-     *   node [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0">
-     *                <TR><TD>clave1</TD><TD>clave2</TD>...</TR>
-     *               </TABLE>>]
      */
-    while (actual != nullptr && contadorHojas < maxNodos) {
+    while (actual != nullptr && (sinLimite || contadorHojas < maxNodos)) {
         out << "    bph" << (size_t)actual
             << " [label=<<TABLE BORDER=\"0\" CELLBORDER=\"1\""
                " CELLSPACING=\"0\" BGCOLOR=\"palegreen\">"
@@ -328,7 +324,7 @@ void VisualizadorDot::arbolBPlusHojas(std::ofstream &out,
     actual = primeraHoja;
     contadorHojas = 0;
     while (actual != nullptr && actual->siguiente != nullptr
-           && contadorHojas < maxNodos - 1) {
+           && (sinLimite || contadorHojas < maxNodos - 1)) {
         out << "    bph" << (size_t)actual
             << " -> bph" << (size_t)actual->siguiente
             << " [style=bold color=darkgreen label=\"sig\"];\n";
@@ -340,7 +336,7 @@ void VisualizadorDot::arbolBPlusHojas(std::ofstream &out,
     out << "\n    { rank=same;";
     actual = primeraHoja;
     contadorHojas = 0;
-    while (actual != nullptr && contadorHojas < maxNodos) {
+    while (actual != nullptr && (sinLimite || contadorHojas < maxNodos)) {
         out << " bph" << (size_t)actual << ";";
         actual = actual->siguiente;
         contadorHojas++;
@@ -370,16 +366,21 @@ bool VisualizadorDot::generarArbolBPlus(ArbolBPlus *arbolBPlus,
     } else {
         int idNodo = 0, contador = 0;
 
+        // Si maxNodos es 0 (sin límite), pasamos 0 a ambos para que no
+        // limiten. Si hay límite, lo repartimos entre internos y hojas.
+        int limInternos = (maxNodos <= 0) ? 0 : maxNodos / 2;
+        int limHojas    = (maxNodos <= 0) ? 0 : maxNodos / 2;
+
         // Nodos internos
         NodoBPlus *raiz = arbolBPlus->obtenerRaiz();
         if (!raiz->esHoja) {
-            arbolBPlusInternosRec(out, raiz, idNodo, contador, maxNodos / 2);
+            arbolBPlusInternosRec(out, raiz, idNodo, contador, limInternos);
         }
 
         // Hojas
         out << "\n    // --- Hojas enlazadas ---\n";
         arbolBPlusHojas(out, arbolBPlus->obtenerPrimeraHoja(),
-                        idNodo, maxNodos / 2);
+                        idNodo, limHojas);
 
         out << "\n    leyenda [label=\""
                "azul=nodo interno\\nverde=hoja\\n"
