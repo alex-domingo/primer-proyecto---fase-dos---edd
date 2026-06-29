@@ -5,8 +5,9 @@
 // Constructor por defecto
 Producto::Producto()
     : nombre(""), codigoBarra(""), categoria(""),
-      fechaCaducidad(""), marca(""), precio(0.0), stock(0),
-      sucursalId(""), estado("Disponible") {}
+    fechaCaducidad(""), marca(""), precio(0.0), stock(0),
+    sucursalId(""), estado("Disponible"),
+    sucursalEntradaId(""), sucursalSalidaId("") {}
 
 // Constructor Fase 1 — compatible con todo el código existente
 Producto::Producto(const std::string &nombre,
@@ -17,9 +18,10 @@ Producto::Producto(const std::string &nombre,
                    double precio,
                    int stock)
     : nombre(nombre), codigoBarra(codigoBarra), categoria(categoria),
-      fechaCaducidad(fechaCaducidad), marca(marca),
-      precio(precio), stock(stock),
-      sucursalId(""), estado("Disponible") {}
+    fechaCaducidad(fechaCaducidad), marca(marca),
+    precio(precio), stock(stock),
+    sucursalId(""), estado("Disponible"),
+    sucursalEntradaId(""), sucursalSalidaId("") {}
 
 // Constructor Fase 2 — incluye sucursal y estado
 Producto::Producto(const std::string &nombre,
@@ -32,9 +34,29 @@ Producto::Producto(const std::string &nombre,
                    const std::string &sucursalId,
                    const std::string &estado)
     : nombre(nombre), codigoBarra(codigoBarra), categoria(categoria),
-      fechaCaducidad(fechaCaducidad), marca(marca),
-      precio(precio), stock(stock),
-      sucursalId(sucursalId), estado(estado) {}
+    fechaCaducidad(fechaCaducidad), marca(marca),
+    precio(precio), stock(stock),
+    sucursalId(sucursalId), estado(estado),
+    sucursalEntradaId(sucursalId), sucursalSalidaId(sucursalId) {}
+
+// Constructor Fase 2 (lotes/hilos) — entrada y salida explícitas.
+// El producto reside en la sucursal de ENTRADA al cargarse.
+Producto::Producto(const std::string &nombre,
+                   const std::string &codigoBarra,
+                   const std::string &categoria,
+                   const std::string &fechaCaducidad,
+                   const std::string &marca,
+                   double precio,
+                   int stock,
+                   const std::string &sucursalEntradaId,
+                   const std::string &sucursalSalidaId,
+                   const std::string &estado)
+    : nombre(nombre), codigoBarra(codigoBarra), categoria(categoria),
+    fechaCaducidad(fechaCaducidad), marca(marca),
+    precio(precio), stock(stock),
+    sucursalId(sucursalEntradaId), estado(estado),
+    sucursalEntradaId(sucursalEntradaId),
+    sucursalSalidaId(sucursalSalidaId) {}
 
 void Producto::mostrar() const {
     std::cout << "------------------------------\n";

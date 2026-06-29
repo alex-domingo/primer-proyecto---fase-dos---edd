@@ -58,6 +58,17 @@ public:
 
     bool estaVacia() const { return tamano == 0; }
     int  obtenerTamano() const { return tamano; }
+
+    // Devuelve copia del contenido en orden LIFO (cima → fondo)
+    // sin modificar la pila. Útil para visualización del historial.
+    void obtenerContenido(T *destino, int maxItems) const {
+        NodoPila *actual = cima_;
+        int i = 0;
+        while (actual != nullptr && i < maxItems) {
+            destino[i++] = actual->dato;
+            actual = actual->siguiente;
+        }
+    }
 };
 
 #endif // PILA_H

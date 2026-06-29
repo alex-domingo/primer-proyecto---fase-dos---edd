@@ -107,29 +107,29 @@ bool Sucursal::deshacerUltimaOperacion() {
     pilaOperaciones.desapilar();
 
     switch (op.tipo) {
-        case Operacion::AGREGAR:
-            // Deshacer un agregar = eliminar
-            catalogo->eliminarProducto(
-                op.producto.nombre,
-                op.producto.codigoBarra,
-                op.producto.categoria,
-                op.producto.fechaCaducidad);
-            std::cout << "[Deshacer] Producto '" << op.producto.nombre
-                      << "' eliminado de sucursal " << id << ".\n";
-            break;
+    case Operacion::AGREGAR:
+        // Deshacer un agregar = eliminar
+        catalogo->eliminarProducto(
+            op.producto.nombre,
+            op.producto.codigoBarra,
+            op.producto.categoria,
+            op.producto.fechaCaducidad);
+        std::cout << "[Deshacer] Producto '" << op.producto.nombre
+                  << "' eliminado de sucursal " << id << ".\n";
+        break;
 
-        case Operacion::ELIMINAR:
-            // Deshacer un eliminar = re-insertar
-            catalogo->agregarProducto(op.producto);
-            std::cout << "[Deshacer] Producto '" << op.producto.nombre
-                      << "' re-insertado en sucursal " << id << ".\n";
-            break;
+    case Operacion::ELIMINAR:
+        // Deshacer un eliminar = re-insertar
+        catalogo->agregarProducto(op.producto);
+        std::cout << "[Deshacer] Producto '" << op.producto.nombre
+                  << "' re-insertado en sucursal " << id << ".\n";
+        break;
 
-        case Operacion::TRANSFERIR:
-            // Deshacer una transferencia = revertir estado
-            std::cout << "[Deshacer] Transferencia de '" << op.producto.nombre
-                      << "' revertida.\n";
-            break;
+    case Operacion::TRANSFERIR:
+        // Deshacer una transferencia = revertir estado
+        std::cout << "[Deshacer] Transferencia de '" << op.producto.nombre
+                  << "' revertida.\n";
+        break;
     }
     return true;
 }
@@ -140,6 +140,35 @@ bool Sucursal::hayOperacionesPendientes() const {
 
 int Sucursal::contarOperaciones() const {
     return pilaOperaciones.obtenerTamano();
+}
+
+
+// ── Devolución de productos ───────────────────────────────────
+/*
+ * Un producto devuelto vuelve al inventario sumando stock.
+ * Si no existe en la sucursal, se crea con las unidades devueltas.
+ * La operación se apila como AGREGAR para poder deshacerla (rollback).
+ */
+bool Sucursal::devolverProducto(const std::string &codigo, int unidades) {
+    if (unidades <= 0) return false;
+
+    Producto *p = catalogo->buscarPorCodigo(codigo);
+    if (p) {
+        // Ya existe: sumamos el stock devuelto
+        int nuevoStock = p->stock + unidades;
+        catalogo->actualizarStock(codigo, nuevoStock);
+
+        // El producto devuelto entra a la cola de ingreso
+        Producto copia = *p;
+        copia.stock = unidades;
+        copia.estado = "Disponible";
+        colaIngreso.encolar(copia);
+
+        // Registrar para poder deshacer
+        pilaOperaciones.apilar(Operacion(Operacion::AGREGAR, copia, id));
+        return true;
+    }
+    return false; // no se puede devolver algo que nunca existió aquí
 }
 
 void Sucursal::mostrar() const {

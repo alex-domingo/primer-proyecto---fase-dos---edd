@@ -43,6 +43,16 @@ class RedSucursales {
 public:
     enum Criterio { TIEMPO, COSTO };
 
+    // Una transferencia pendiente surge cuando un producto se carga
+    // con sucursal de entrada distinta a la de salida. Queda en espera
+    // hasta que el usuario dispare los procesos.
+    struct TransferenciaPendiente {
+        std::string codigoBarra;
+        std::string origenId;   // sucursal de entrada
+        std::string destinoId;  // sucursal de salida
+        std::string nombreProducto;
+    };
+
 private:
     // ── Nodo interno del grafo ────────────────────────────────
     struct NodoGrafo {
@@ -53,6 +63,9 @@ private:
     };
 
     std::vector<NodoGrafo*> nodos;
+
+    // Cola de transferencias pendientes (productos con entrada != salida)
+    std::vector<TransferenciaPendiente> transferenciasPendientes;
 
     // Auxiliar: busca el índice de una sucursal por ID — O(V)
     int indiceDe(const std::string &id) const;
@@ -112,6 +125,16 @@ public:
     // Para pintar la ruta resaltada en el .dot
     bool generarDotConRuta(const std::string &rutaArchivo,
                            const ResultadoRuta &ruta) const;
+
+    // ── Transferencias pendientes (productos entrada != salida) ──
+    void registrarTransferenciaPendiente(const std::string &codigoBarra,
+                                         const std::string &origenId,
+                                         const std::string &destinoId);
+    const std::vector<TransferenciaPendiente>& obtenerPendientes() const {
+        return transferenciasPendientes;
+    }
+    int  contarPendientes() const { return (int)transferenciasPendientes.size(); }
+    void limpiarPendientes() { transferenciasPendientes.clear(); }
 };
 
 #endif // RED_SUCURSALES_H

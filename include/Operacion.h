@@ -24,6 +24,14 @@ struct Operacion {
     std::string sucursalId;      // sucursal donde ocurrió
     std::string sucursalDestino; // solo para TRANSFERIR
 
+    // Constructor por defecto — necesario para crear arreglos (snapshot de la pila)
+    Operacion()
+        : tipo(AGREGAR)
+        , producto()
+        , sucursalId("")
+        , sucursalDestino("")
+    {}
+
     Operacion(Tipo tipo,
               const Producto &producto,
               const std::string &sucursalId,

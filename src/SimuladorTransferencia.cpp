@@ -4,54 +4,44 @@
 SimuladorTransferencia::SimuladorTransferencia(QObject *parent)
     : QObject(parent)
     , red(nullptr)
-    , unidades(0)
     , factor(30)
     , indiceTramo(0)
     , activo(false)
     , criterio(RedSucursales::TIEMPO)
-{
-    timer.setSingleShot(true);
-}
+{}
 
-QString SimuladorTransferencia::etapaTexto(Etapa e) const {
-    switch (e) {
-    case INGRESO:   return "Ingreso";
-    case TRASPASO:  return "Traspaso";
-    case DESPACHO:  return "Despacho";
-    case EN_VIAJE:  return "En viaje";
-    case ENTREGADO: return "Entregado";
-    }
-    return "?";
-}
-
-// ── Iniciar la simulación ─────────────────────────────────────
+// ── Iniciar simulación de lote ────────────────────────────────
 
 void SimuladorTransferencia::iniciar(RedSucursales *r,
-                                     const std::string &codigoBarra,
+                                     const std::vector<std::string> &codigosBarra,
                                      const std::string &origenId,
                                      const std::string &destinoId,
                                      RedSucursales::Criterio crit,
-                                     int unidadesParam,
                                      int factorAceleracion) {
     if (activo) {
-        emit log("[!] Ya hay una simulación en curso.");
+        emit log("[!] Ya hay una simulacion en curso.");
         return;
     }
     red      = r;
     criterio = crit;
-    unidades = unidadesParam;
     factor   = factorAceleracion > 0 ? factorAceleracion : 30;
 
     Sucursal *origen = red->buscarSucursal(origenId);
     if (!origen) { emit simulacionCompletada(false); return; }
 
-    Producto *p = origen->buscarPorCodigo(codigoBarra);
-    if (!p) { emit simulacionCompletada(false); return; }
+    // Construir el lote con los productos solicitados
+    lote.clear();
+    for (const std::string &cod : codigosBarra) {
+        Producto *p = origen->buscarPorCodigo(cod);
+        if (p) {
+            Producto copia = *p;
+            copia.estado = "EnTransito";
+            lote.push_back(copia);
+        }
+    }
 
-    if (unidades <= 0) unidades = p->stock;
-    if (unidades > p->stock) {
-        emit log(QString("[!] Stock insuficiente: %1 disponibles, %2 solicitados.")
-                     .arg(p->stock).arg(unidades));
+    if (lote.empty()) {
+        emit log("[!] Ningun producto valido en el lote.");
         emit simulacionCompletada(false);
         return;
     }
@@ -63,32 +53,23 @@ void SimuladorTransferencia::iniciar(RedSucursales *r,
         return;
     }
 
-    // Copia del producto que viajará — marcado en tránsito
-    producto = *p;
-    producto.stock = unidades;
-    producto.estado = "EnTransito";
-
     activo = true;
     indiceTramo = 0;
 
-    emit log(QString("=== Iniciando transferencia ==="));
-    emit log(QString("Producto: %1  |  Unidades: %2")
-                 .arg(QString::fromStdString(producto.nombre)).arg(unidades));
-    emit log(QString("Ruta: %1 nodos  |  Factor: %2x")
-                 .arg(ruta.nodos.size()).arg(factor));
+    emit log("=== Iniciando transferencia de lote ===");
+    emit log(QString("Productos en lote: %1  |  Ruta: %2 nodos  |  Factor: %3x")
+                 .arg(lote.size()).arg(ruta.nodos.size()).arg(factor));
 
-    // El producto entra a la cola de ingreso del origen primero
-    procesarSiguienteEtapa();
+    procesarNodo();
 }
 
-// ── Máquina de estados ────────────────────────────────────────
+// ── Procesar el nodo actual de la ruta ────────────────────────
 
-void SimuladorTransferencia::procesarSiguienteEtapa() {
+void SimuladorTransferencia::procesarNodo() {
     if (!activo) return;
 
     int n = (int)ruta.nodos.size();
     if (indiceTramo >= n) {
-        // Llegó al destino
         terminarSimulacion(true);
         return;
     }
@@ -100,134 +81,209 @@ void SimuladorTransferencia::procesarSiguienteEtapa() {
     bool esOrigen  = (indiceTramo == 0);
     bool esDestino = (indiceTramo == n - 1);
 
-    // ── Etapa INGRESO ─────────────────────────────────────────
-    s->getColaIngreso().encolar(producto);
-    emit etapaIniciada(sucId, INGRESO,
-                       QString("[%1] Producto en cola de ingreso (%2 unidades)")
-                           .arg(sucId).arg(unidades));
-    emit log(QString("  → [%1] INGRESO  (%2s)")
-                 .arg(sucId).arg(s->getTiempoIngreso()));
+    // ═══════════════════════════════════════════════════════════
+    // Procesamiento UNO A UNO en cada cola (FIFO visible):
+    // los productos entran a la cola y van saliendo del frente de
+    // uno en uno, esperando el tiempo correspondiente entre cada uno.
+    // Esto aplica igual a ingreso, traspaso y salida.
+    //
+    // Flujo por rol:
+    //   ORIGEN     : ingreso(1x1) → salida(1x1) → viaja
+    //   INTERMEDIA : ingreso(1x1) → traspaso(1x1) → salida(1x1) → viaja
+    //   DESTINO    : ingreso(1x1) → PERMANECE
+    // ═══════════════════════════════════════════════════════════
 
-    QTimer::singleShot(msEscalado(s->getTiempoIngreso()), this, [=]() {
+    // Encadenamiento de fases mediante callbacks.
+    // Primero definimos qué hacer al terminar la cola de salida (viaje).
+    auto viajarAlSiguiente = [=]() {
         if (!activo) return;
-        // Sale de cola ingreso
-        if (!s->getColaIngreso().estaVacia())
-            s->getColaIngreso().desencolar();
-
-        if (esDestino) {
-            // El destino solo procesa ingreso — luego entrega
-            emit etapaIniciada(sucId, ENTREGADO,
-                               QString("[%1] Producto entregado").arg(sucId));
-            aplicarTransferenciaFinal();
-            terminarSimulacion(true);
-            return;
+        std::string siguiente = ruta.nodos[indiceTramo + 1];
+        int tiempoArista = 0;
+        for (const Conexion &c : red->obtenerConexionesDe(ruta.nodos[indiceTramo])) {
+            if (c.destinoId == siguiente) { tiempoArista = (int)c.tiempo; break; }
         }
-
-        // ── Etapa TRASPASO ────────────────────────────────────
-        s->getColaTraspaso().encolar(producto);
-        emit etapaIniciada(sucId, TRASPASO,
-                           QString("[%1] Producto en cola de traspaso").arg(sucId));
-        emit log(QString("  → [%1] TRASPASO (%2s)")
-                     .arg(sucId).arg(s->getTiempoTraspaso()));
-
-        QTimer::singleShot(msEscalado(s->getTiempoTraspaso()), this, [=]() {
+        emit productoEnTransito(sucId, QString::fromStdString(siguiente));
+        emit log(QString("  -> [%1 -> %2] LOTE EN VIAJE (%3s)")
+                     .arg(sucId).arg(QString::fromStdString(siguiente)).arg(tiempoArista));
+        QTimer::singleShot(msEscalado(tiempoArista), this, [=]() {
             if (!activo) return;
-            if (!s->getColaTraspaso().estaVacia())
-                s->getColaTraspaso().desencolar();
-
-            // ── Etapa DESPACHO ────────────────────────────────
-            s->getColaSalida().encolar(producto);
-            emit etapaIniciada(sucId, DESPACHO,
-                               QString("[%1] Producto en cola de salida").arg(sucId));
-            emit log(QString("  → [%1] DESPACHO (%2s)")
-                         .arg(sucId).arg(s->getTiempoDespacho()));
-
-            QTimer::singleShot(msEscalado(s->getTiempoDespacho()), this, [=]() {
-                if (!activo) return;
-                if (!s->getColaSalida().estaVacia())
-                    s->getColaSalida().desencolar();
-
-                // ── Etapa EN_VIAJE ────────────────────────────
-                std::string siguiente = ruta.nodos[indiceTramo + 1];
-                int tiempoArista = 0;
-                for (const Conexion &c : red->obtenerConexionesDe(ruta.nodos[indiceTramo])) {
-                    if (c.destinoId == siguiente) {
-                        tiempoArista = (int)c.tiempo;
-                        break;
-                    }
-                }
-                emit productoEnTransito(sucId, QString::fromStdString(siguiente));
-                emit log(QString("  → [%1 → %2] EN VIAJE (%3s)")
-                             .arg(sucId)
-                             .arg(QString::fromStdString(siguiente))
-                             .arg(tiempoArista));
-
-                QTimer::singleShot(msEscalado(tiempoArista), this, [=]() {
-                    if (!activo) return;
-                    indiceTramo++;
-                    procesarSiguienteEtapa();
-                });
-            });
+            indiceTramo++;
+            procesarNodo();
         });
-        (void)esOrigen; // suprimir warning si no se usa
-    });
+    };
+
+    // Fase SALIDA: despacha uno a uno con el intervalo de despacho
+    auto faseSalida = [=]() {
+        if (!activo) return;
+        for (const Producto &p : lote) s->getColaSalida().encolar(p);
+        emit etapaIniciada(sucId, DESPACHO,
+                           QString("[%1] %2 productos en cola de salida — despacho uno a uno")
+                               .arg(sucId).arg(lote.size()));
+        emit log(QString("  -> [%1] SALIDA: %2 productos, intervalo %3s c/u")
+                     .arg(sucId).arg(lote.size()).arg(s->getTiempoDespacho()));
+
+        int total = (int)lote.size();
+        int intervalo = s->getTiempoDespacho();
+        for (int i = 0; i < total; i++) {
+            // i+1 para que el primero también espere su intervalo (entra, espera, sale)
+            QTimer::singleShot(msEscalado(intervalo * (i + 1)), this, [=]() {
+                if (!activo) return;
+                if (!s->getColaSalida().estaVacia()) {
+                    QString nombreProd =
+                        QString::fromStdString(s->getColaSalida().frente().nombre);
+                    s->getColaSalida().desencolar();
+                    emit productoDespachado(i + 1, total, nombreProd);
+                    emit log(QString("     SALIDA despachado [%1/%2]: %3")
+                                 .arg(i + 1).arg(total).arg(nombreProd));
+                }
+                if (i == total - 1) viajarAlSiguiente();
+            });
+        }
+    };
+
+    // Fase TRASPASO: solo intermedias, procesa uno a uno
+    auto faseTraspaso = [=]() {
+        if (!activo) return;
+        for (const Producto &p : lote) s->getColaTraspaso().encolar(p);
+        emit etapaIniciada(sucId, TRASPASO,
+                           QString("[%1] %2 productos en cola de traspaso — uno a uno")
+                               .arg(sucId).arg(lote.size()));
+        emit log(QString("  -> [%1] TRASPASO: %2 productos, %3s c/u")
+                     .arg(sucId).arg(lote.size()).arg(s->getTiempoTraspaso()));
+
+        int total = (int)lote.size();
+        int tTras = s->getTiempoTraspaso();
+        for (int i = 0; i < total; i++) {
+            QTimer::singleShot(msEscalado(tTras * (i + 1)), this, [=]() {
+                if (!activo) return;
+                if (!s->getColaTraspaso().estaVacia()) {
+                    QString nombreProd =
+                        QString::fromStdString(s->getColaTraspaso().frente().nombre);
+                    s->getColaTraspaso().desencolar();
+                    emit productoDespachado(i + 1, total, nombreProd);
+                    emit log(QString("     TRASPASO procesado [%1/%2]: %3")
+                                 .arg(i + 1).arg(total).arg(nombreProd));
+                }
+                if (i == total - 1) faseSalida();
+            });
+        }
+    };
+
+    // ── Fase INGRESO: todas las sucursales, uno a uno ─────────
+    for (const Producto &p : lote) s->getColaIngreso().encolar(p);
+    emit etapaIniciada(sucId, INGRESO,
+                       QString("[%1] %2 productos en cola de ingreso — uno a uno")
+                           .arg(sucId).arg(lote.size()));
+    emit log(QString("  -> [%1] INGRESO: %2 productos, %3s c/u%4")
+                 .arg(sucId).arg(lote.size()).arg(s->getTiempoIngreso())
+                 .arg(esDestino ? " [destino final]" :
+                          esOrigen ? " [origen]" : " [intermedia]"));
+
+    int total = (int)lote.size();
+    int tIng = s->getTiempoIngreso();
+
+    if (esDestino) {
+        // DESTINO: procesa el ingreso uno a uno pero el lote PERMANECE.
+        // No se desencola — los productos se quedan en la cola de ingreso.
+        for (int i = 0; i < total; i++) {
+            QTimer::singleShot(msEscalado(tIng * (i + 1)), this, [=]() {
+                if (!activo) return;
+                emit productoDespachado(i + 1, total,
+                                        QString::fromStdString(lote[i].nombre));
+                emit log(QString("     INGRESO recibido [%1/%2]: %3")
+                             .arg(i + 1).arg(total)
+                             .arg(QString::fromStdString(lote[i].nombre)));
+                if (i == total - 1) {
+                    for (Producto &p : lote) p.estado = "Disponible";
+                    emit etapaIniciada(sucId, ENTREGADO,
+                                       QString("[%1] %2 productos entregados (permanecen en ingreso)")
+                                           .arg(sucId).arg(lote.size()));
+                    emit log(QString("  -> [%1] ENTREGADO — lote permanece en ingreso")
+                                 .arg(sucId));
+                    aplicarTransferenciaFinal();
+                    terminarSimulacion(true);
+                }
+            });
+        }
+    } else {
+        // ORIGEN o INTERMEDIA: ingreso uno a uno, luego continúa
+        for (int i = 0; i < total; i++) {
+            QTimer::singleShot(msEscalado(tIng * (i + 1)), this, [=]() {
+                if (!activo) return;
+                if (!s->getColaIngreso().estaVacia()) {
+                    QString nombreProd =
+                        QString::fromStdString(s->getColaIngreso().frente().nombre);
+                    s->getColaIngreso().desencolar();
+                    emit productoDespachado(i + 1, total, nombreProd);
+                    emit log(QString("     INGRESO procesado [%1/%2]: %3")
+                                 .arg(i + 1).arg(total).arg(nombreProd));
+                }
+                if (i == total - 1) {
+                    if (esOrigen) faseSalida();   // origen: sin traspaso
+                    else          faseTraspaso(); // intermedia
+                }
+            });
+        }
+    }
 }
 
-// ── Terminar y aplicar cambios al inventario ──────────────────
+// ── Terminar ──────────────────────────────────────────────────
 
 void SimuladorTransferencia::terminarSimulacion(bool exitosa) {
     activo = false;
-    emit simulacionCompletada(exitosa);
     if (exitosa)
-        emit log("=== Transferencia completada exitosamente ===");
+        emit log("=== Transferencia de lote completada ===");
     else
         emit log("=== Transferencia cancelada o fallida ===");
+    emit simulacionCompletada(exitosa);
 }
+
+// ── Aplicar cambios reales al inventario ──────────────────────
 
 void SimuladorTransferencia::aplicarTransferenciaFinal() {
     if (!red || ruta.nodos.size() < 2) return;
 
     std::string origenId  = ruta.nodos.front();
     std::string destinoId = ruta.nodos.back();
-
     Sucursal *origen  = red->buscarSucursal(origenId);
     Sucursal *destino = red->buscarSucursal(destinoId);
     if (!origen || !destino) return;
 
-    Producto *pOrig = origen->buscarPorCodigo(producto.codigoBarra);
-    if (!pOrig) return;
+    // Procesar cada producto del lote
+    for (const Producto &prod : lote) {
+        Producto *pOrig = origen->buscarPorCodigo(prod.codigoBarra);
+        if (!pOrig) continue;
 
-    int stockRestante = pOrig->stock - unidades;
+        int unidades = prod.stock; // transferimos el stock que tenía
+        int stockRestante = pOrig->stock - unidades;
 
-    // Aplicar al destino
-    Producto *pDest = destino->buscarPorCodigo(producto.codigoBarra);
-    if (pDest) {
-        // Existe: sumar stock en las 6 estructuras
-        destino->getCatalogo()->actualizarStock(
-            producto.codigoBarra, pDest->stock + unidades);
-    } else {
-        // No existe: agregar copia con estado Disponible
-        Producto nuevo = producto;
-        nuevo.estado = "Disponible";
-        nuevo.sucursalId = destinoId;
-        destino->getCatalogo()->agregarProducto(nuevo);
-    }
+        // Destino: sumar o crear
+        Producto *pDest = destino->buscarPorCodigo(prod.codigoBarra);
+        if (pDest) {
+            destino->getCatalogo()->actualizarStock(
+                prod.codigoBarra, pDest->stock + unidades);
+        } else {
+            Producto nuevo = prod;
+            nuevo.estado = "Disponible";
+            nuevo.sucursalId = destinoId;
+            destino->getCatalogo()->agregarProducto(nuevo);
+        }
 
-    // Aplicar al origen
-    if (stockRestante <= 0) {
-        origen->eliminarProducto(
-            pOrig->nombre, pOrig->codigoBarra,
-            pOrig->categoria, pOrig->fechaCaducidad);
-    } else {
-        origen->getCatalogo()->actualizarStock(
-            producto.codigoBarra, stockRestante);
+        // Origen: restar o eliminar
+        if (stockRestante <= 0) {
+            origen->eliminarProducto(
+                pOrig->nombre, pOrig->codigoBarra,
+                pOrig->categoria, pOrig->fechaCaducidad);
+        } else {
+            origen->getCatalogo()->actualizarStock(
+                prod.codigoBarra, stockRestante);
+        }
     }
 }
 
 void SimuladorTransferencia::cancelar() {
     if (!activo) return;
     activo = false;
-    timer.stop();
-    emit log("=== Simulación cancelada por el usuario ===");
+    emit log("=== Simulacion cancelada por el usuario ===");
     emit simulacionCompletada(false);
 }

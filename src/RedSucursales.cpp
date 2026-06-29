@@ -417,3 +417,21 @@ bool RedSucursales::generarDotConRuta(const std::string &rutaArchivo,
     out.close();
     return true;
 }
+
+// ── Transferencias pendientes ─────────────────────────────────
+void RedSucursales::registrarTransferenciaPendiente(
+    const std::string &codigoBarra,
+    const std::string &origenId,
+    const std::string &destinoId) {
+    TransferenciaPendiente tp;
+    tp.codigoBarra = codigoBarra;
+    tp.origenId    = origenId;
+    tp.destinoId   = destinoId;
+    // Buscar el nombre del producto para mostrarlo en la UI
+    Sucursal *s = buscarSucursal(origenId);
+    if (s) {
+        Producto *p = s->buscarPorCodigo(codigoBarra);
+        if (p) tp.nombreProducto = p->nombre;
+    }
+    transferenciasPendientes.push_back(tp);
+}

@@ -39,11 +39,14 @@
 #include <QProcess>
 #include <QProgressBar>
 #include <QDateTime>
+#include <QElapsedTimer>
+#include <QPair>
 #include <QString>
 #include <QFont>
 #include <QColor>
 #include <chrono>
 #include <cmath>
+#include <functional>
 
 // ── Paleta y estilos del sistema ──────────────────────────────
 static const QString AZUL_OSCURO = "#1F3864";
@@ -225,6 +228,8 @@ void MainWindow::construirUI() {
     tabs->addTab(crearTabRed(),           "  Red  ");
     tabs->addTab(crearTabInventario(),    "  Inventario  ");
     tabs->addTab(crearTabTransferencia(), "  Transferencia  ");
+    tabs->addTab(crearTabOperaciones(),   "  Operaciones  ");
+    tabs->addTab(crearTabProcesos(),      "  Procesos (hilos)  ");
     tabs->addTab(crearTabRendimiento(),   "  Rendimiento  ");
     tabs->addTab(crearTabEstructuras(),   "  Visualización  ");
 
@@ -485,7 +490,7 @@ QWidget* MainWindow::crearTabSistema() {
         bool ok = cargador.cargarTodo(
             "data/sucursales.csv",
             "data/conexiones.csv",
-            "data/productos_fase2.csv",
+            "data/productos.csv",
             *red);
         int total = 0;
         for (auto s : red->obtenerSucursales()) total += s->contarProductos();
@@ -1301,8 +1306,8 @@ QWidget* MainWindow::crearTabInventario() {
             }
         }
         QLineEdit *dNom = new QLineEdit();
-        QLineEdit *dCod = new QLineEdit(); dCod->setMaxLength(10);
-        dCod->setPlaceholderText("Exactamente 10 dígitos");
+        QLineEdit *dCod = new QLineEdit();
+        dCod->setPlaceholderText("Código de barra (cualquier longitud)");
         QLineEdit *dCat = new QLineEdit();
         QLineEdit *dFec = new QLineEdit(); dFec->setPlaceholderText("YYYY-MM-DD");
         QLineEdit *dMar = new QLineEdit();
@@ -1331,9 +1336,9 @@ QWidget* MainWindow::crearTabInventario() {
         connect(bb, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
 
         if (dlg.exec() == QDialog::Accepted) {
-            if (dCod->text().length() != 10) {
+            if (dCod->text().trimmed().isEmpty()) {
                 QMessageBox::warning(w, "Error",
-                                     "El código debe tener exactamente 10 dígitos.");
+                                     "El código de barra no puede estar vacío.");
                 return;
             }
             QString sucId = dSuc->currentData().toString();
@@ -1397,9 +1402,9 @@ QWidget* MainWindow::crearTabTransferencia() {
 
     QString cstyle = estiloCampo();
 
-    // Panel izquierdo dentro de QScrollArea para que no se comprima
+    // ── Panel izquierdo (scroll) ──────────────────────────────
     QScrollArea *scrollPanel = new QScrollArea();
-    scrollPanel->setFixedWidth(400);
+    scrollPanel->setFixedWidth(420);
     scrollPanel->setWidgetResizable(true);
     scrollPanel->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     scrollPanel->setStyleSheet(QString(
@@ -1419,21 +1424,15 @@ QWidget* MainWindow::crearTabTransferencia() {
     QFormLayout *fLay = new QFormLayout(gbConf);
     fLay->setSpacing(8);
     fLay->setContentsMargins(12, 14, 12, 14);
-    fLay->setLabelAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    fLay->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+
+    auto mkLabel = [](const QString &t) {
+        QLabel *l = new QLabel(t);
+        l->setStyleSheet(QString("color: %1; font-weight: bold;").arg(TEXTO_NEGRO));
+        return l;
+    };
 
     QComboBox *cOrigen  = new QComboBox(); cOrigen->setStyleSheet(cstyle);
     QComboBox *cDestino = new QComboBox(); cDestino->setStyleSheet(cstyle);
-
-    QLineEdit *eCodigo = new QLineEdit();
-    eCodigo->setPlaceholderText("Código de barra (10 dígitos)");
-    eCodigo->setStyleSheet(cstyle);
-
-    QSpinBox *eUnidades = new QSpinBox();
-    eUnidades->setRange(1, 999999);
-    eUnidades->setValue(1);
-    eUnidades->setSpecialValueText("Todo el stock (1)");
-    eUnidades->setStyleSheet(cstyle);
 
     QRadioButton *rTiempo = new QRadioButton("Minimizar tiempo");
     QRadioButton *rCosto  = new QRadioButton("Minimizar costo");
@@ -1446,88 +1445,85 @@ QWidget* MainWindow::crearTabTransferencia() {
     QHBoxLayout *rhLay = new QHBoxLayout();
     rhLay->addWidget(rTiempo); rhLay->addWidget(rCosto);
 
-    // Selector de velocidad de simulación
     QComboBox *cmbVelocidad = new QComboBox();
     cmbVelocidad->addItem("1x — tiempo real (lento)", 1);
     cmbVelocidad->addItem("10x — moderado",            10);
     cmbVelocidad->addItem("30x — recomendado",         30);
     cmbVelocidad->addItem("60x — rápido",              60);
     cmbVelocidad->addItem("120x — muy rápido",         120);
-    cmbVelocidad->setCurrentIndex(2); // 30x default
+    cmbVelocidad->setCurrentIndex(2);
     cmbVelocidad->setStyleSheet(cstyle);
 
-    auto mkLabel = [](const QString &t) {
-        QLabel *l = new QLabel(t);
-        l->setMinimumWidth(72);
-        l->setStyleSheet(QString("color: %1; font-weight: bold; font-size: 12px;")
-                             .arg(TEXTO_NEGRO));
-        return l;
-    };
     fLay->addRow(mkLabel("Origen:"),    cOrigen);
     fLay->addRow(mkLabel("Destino:"),   cDestino);
-
-    // Separador visual entre destino y datos del producto
-    QFrame *sep1 = new QFrame();
-    sep1->setFrameShape(QFrame::HLine);
-    sep1->setStyleSheet(QString("color: %1;").arg(GRIS_BORDE));
-    fLay->addRow(sep1);
-
-    fLay->addRow(mkLabel("Código:"),    eCodigo);
-    fLay->addRow(mkLabel("Unidades:"),  eUnidades);
-
-    // Separador visual antes de opciones
-    QFrame *sep2 = new QFrame();
-    sep2->setFrameShape(QFrame::HLine);
-    sep2->setStyleSheet(QString("color: %1;").arg(GRIS_BORDE));
-    fLay->addRow(sep2);
-
     fLay->addRow(mkLabel("Criterio:"),  rhLay);
     fLay->addRow(mkLabel("Velocidad:"), cmbVelocidad);
+    pLay->addWidget(gbConf);
 
+    // ── Selección de productos (multi-check) ──────────────────
+    QGroupBox *gbProd = new QGroupBox("Productos a transferir (marca uno o varios)");
+    gbProd->setStyleSheet(estiloGroupBox());
+    QVBoxLayout *prodLay = new QVBoxLayout(gbProd);
+    prodLay->setContentsMargins(10, 16, 10, 10);
+
+    QLineEdit *filtroProd = new QLineEdit();
+    filtroProd->setPlaceholderText("Filtrar productos del origen...");
+    filtroProd->setStyleSheet(cstyle);
+    prodLay->addWidget(filtroProd);
+
+    QListWidget *listaProd = new QListWidget();
+    listaProd->setStyleSheet(estiloLista());
+    listaProd->setMinimumHeight(180);
+    prodLay->addWidget(listaProd);
+
+    QHBoxLayout *selLay = new QHBoxLayout();
+    QPushButton *btnTodos = new QPushButton("Marcar todos");
+    QPushButton *btnNinguno = new QPushButton("Desmarcar todos");
+    QPushButton *btnLote = new QPushButton("Lote demo (5)");
+    btnTodos->setStyleSheet(estiloBoton(AZUL_MEDIO));
+    btnNinguno->setStyleSheet(estiloBoton("#757575"));
+    btnLote->setStyleSheet(estiloBoton("#00897B"));
+    selLay->addWidget(btnTodos);
+    selLay->addWidget(btnNinguno);
+    selLay->addWidget(btnLote);
+    prodLay->addLayout(selLay);
+
+    QLabel *lblSelCount = new QLabel("0 productos seleccionados");
+    lblSelCount->setStyleSheet(QString("color: %1; font-size: 11px;").arg(TEXTO_NEGRO));
+    prodLay->addWidget(lblSelCount);
+    pLay->addWidget(gbProd);
+
+    // ── Botones de acción ─────────────────────────────────────
     QPushButton *btnCalc   = new QPushButton("⟶  Calcular ruta óptima");
-    QPushButton *btnTrans  = new QPushButton("▶  Simular transferencia");
+    QPushButton *btnTrans  = new QPushButton("▶  Simular transferencia del lote");
     QPushButton *btnCancel = new QPushButton("✕  Cancelar simulación");
     btnCalc->setStyleSheet(estiloBoton(AZUL_MEDIO));
     btnTrans->setStyleSheet(estiloBoton(VERDE));
     btnCancel->setStyleSheet(estiloBoton(ROJO));
     btnTrans->setEnabled(false);
     btnCancel->setEnabled(false);
-    // Separador antes de botones
-    QFrame *sep3 = new QFrame();
-    sep3->setFrameShape(QFrame::HLine);
-    sep3->setStyleSheet(QString("color: %1;").arg(GRIS_BORDE));
-    fLay->addRow(sep3);
+    pLay->addWidget(btnCalc);
+    pLay->addWidget(btnTrans);
+    pLay->addWidget(btnCancel);
 
-    btnCalc->setMinimumHeight(36);
-    btnTrans->setMinimumHeight(36);
-    btnCancel->setMinimumHeight(36);
-    fLay->addRow("", btnCalc);
-    fLay->addRow("", btnTrans);
-    fLay->addRow("", btnCancel);
-    pLay->addWidget(gbConf);
-
-    // Panel del estado actual de la simulación
+    // ── Estado de la simulación ───────────────────────────────
     QGroupBox *gbEstado = new QGroupBox("Estado de la simulación");
     gbEstado->setStyleSheet(estiloGroupBox());
     QVBoxLayout *estLay = new QVBoxLayout(gbEstado);
     estLay->setContentsMargins(12, 16, 12, 12);
 
-    // Badge: estado del producto
     QLabel *lblEstadoProd = new QLabel("Sin simulación activa");
     lblEstadoProd->setAlignment(Qt::AlignCenter);
     lblEstadoProd->setStyleSheet(QString(
                                      "background: %1; color: white; font-weight: bold;"
-                                     " padding: 8px; border-radius: 4px; font-size: 13px;"
-                                     ).arg("#888"));
+                                     " padding: 8px; border-radius: 4px; font-size: 13px;").arg("#888"));
     estLay->addWidget(lblEstadoProd);
 
-    // Sucursal actual
     QLabel *lblSucActual = new QLabel("Sucursal actual: —");
     lblSucActual->setStyleSheet(QString(
                                     "color: %1; font-size: 12px; padding: 4px;").arg(TEXTO_NEGRO));
     estLay->addWidget(lblSucActual);
 
-    // Barra de progreso
     QProgressBar *barraProg = new QProgressBar();
     barraProg->setRange(0, 100);
     barraProg->setValue(0);
@@ -1538,7 +1534,6 @@ QWidget* MainWindow::crearTabTransferencia() {
                                  ).arg(GRIS_BORDE).arg(TEXTO_NEGRO).arg(AZUL_MEDIO));
     estLay->addWidget(barraProg);
 
-    // Log de eventos
     QLabel *lblLogTit = new QLabel("Log de eventos:");
     lblLogTit->setStyleSheet(QString(
                                  "color: %1; font-weight: bold; font-size: 11px; padding-top: 6px;"
@@ -1548,12 +1543,11 @@ QWidget* MainWindow::crearTabTransferencia() {
     QTextEdit *txtLog = new QTextEdit();
     txtLog->setReadOnly(true);
     txtLog->setStyleSheet(estiloTextEdit());
-    txtLog->setFixedHeight(110);
+    txtLog->setFixedHeight(120);
     estLay->addWidget(txtLog);
-
     pLay->addWidget(gbEstado);
 
-    // Panel resumen de colas (números actuales por sucursal)
+    // ── Colas por sucursal ────────────────────────────────────
     QGroupBox *gbColas = new QGroupBox("Colas por sucursal");
     gbColas->setStyleSheet(estiloGroupBox());
     QVBoxLayout *colasLay = new QVBoxLayout(gbColas);
@@ -1569,7 +1563,7 @@ QWidget* MainWindow::crearTabTransferencia() {
     scrollPanel->setWidget(panel);
     lay->addWidget(scrollPanel);
 
-    // Panel derecho
+    // ── Panel derecho: ruta y detalles ────────────────────────
     QWidget *panelRes = new QWidget();
     QVBoxLayout *rLay = new QVBoxLayout(panelRes);
     rLay->setSpacing(12);
@@ -1599,15 +1593,74 @@ QWidget* MainWindow::crearTabTransferencia() {
     rLay->addWidget(gbDet, 1);
     lay->addWidget(panelRes, 1);
 
+    // ── Estado compartido ─────────────────────────────────────
     struct EstadoRuta {
         ResultadoRuta ruta;
-        QString codigoBarra, origenId, destinoId;
+        QString origenId, destinoId;
+        std::vector<std::string> codigos;
     };
     EstadoRuta *estado = new EstadoRuta();
 
-    auto refrescarCombosYColas = [=]() {
+    auto mkItemCheck = [](const QString &txt, const QString &codigo) {
+        QListWidgetItem *it = new QListWidgetItem(txt);
+        it->setFlags(it->flags() | Qt::ItemIsUserCheckable);
+        it->setCheckState(Qt::Unchecked);
+        it->setForeground(QColor(TEXTO_NEGRO));
+        it->setData(Qt::UserRole, codigo);
+        return it;
+    };
+
+    // Llenar lista de productos del origen
+    auto cargarProductosOrigen = [=]() {
+        listaProd->clear();
+        QString origId = cOrigen->currentData().toString();
+        Sucursal *s = red->buscarSucursal(origId.toStdString());
+        if (!s) return;
+        struct Walker {
+            static void walk(NodoAVL *n, QListWidget *lst,
+                             std::function<QListWidgetItem*(const QString&, const QString&)> mk) {
+                if (!n) return;
+                walk(n->izquierda, lst, mk);
+                Producto &p = n->dato;
+                QString txt = QString("%1  [stock: %2]  %3")
+                                  .arg(QString::fromStdString(p.nombre))
+                                  .arg(p.stock)
+                                  .arg(QString::fromStdString(p.codigoBarra));
+                lst->addItem(mk(txt, QString::fromStdString(p.codigoBarra)));
+                walk(n->derecha, lst, mk);
+            }
+        };
+        Walker::walk(s->getCatalogo()->obtenerArbolAVL()->obtenerRaiz(),
+                     listaProd, mkItemCheck);
+    };
+
+    auto contarSeleccionados = [=]() {
+        int n = 0;
+        for (int i = 0; i < listaProd->count(); i++)
+            if (listaProd->item(i)->checkState() == Qt::Checked) n++;
+        lblSelCount->setText(QString("%1 productos seleccionados").arg(n));
+        return n;
+    };
+
+    auto refrescarPanelColas = [=]() {
+        QString info;
+        for (Sucursal *s : red->obtenerSucursales()) {
+            int ing = s->getColaIngreso().obtenerTamano();
+            int tra = s->getColaTraspaso().obtenerTamano();
+            int sal = s->getColaSalida().obtenerTamano();
+            QString pre = (ing+tra+sal > 0) ? "►" : " ";
+            info += QString("%1[%2] ing:%3 tras:%4 sal:%5\n")
+                        .arg(pre).arg(QString::fromStdString(s->getId()))
+                        .arg(ing).arg(tra).arg(sal);
+        }
+        if (info.isEmpty()) info = "Sin sucursales.";
+        txtColas->setText(info);
+    };
+
+    auto refrescarCombos = [=]() {
         QString prevO = cOrigen->currentData().toString();
         QString prevD = cDestino->currentData().toString();
+        cOrigen->blockSignals(true); cDestino->blockSignals(true);
         cOrigen->clear(); cDestino->clear();
         for (Sucursal *s : red->obtenerSucursales()) {
             QString lbl = QString::fromStdString(s->getId() + " — " + s->getNombre());
@@ -1616,47 +1669,81 @@ QWidget* MainWindow::crearTabTransferencia() {
             cDestino->addItem(lbl, id);
         }
         for (int i = 0; i < cOrigen->count(); i++)
-            if (cOrigen->itemData(i).toString() == prevO) {
-                cOrigen->setCurrentIndex(i); break;
-            }
+            if (cOrigen->itemData(i).toString() == prevO) cOrigen->setCurrentIndex(i);
         for (int i = 0; i < cDestino->count(); i++)
-            if (cDestino->itemData(i).toString() == prevD) {
-                cDestino->setCurrentIndex(i); break;
-            }
+            if (cDestino->itemData(i).toString() == prevD) cDestino->setCurrentIndex(i);
         if (cDestino->count() > 1 && cDestino->currentIndex() == 0)
             cDestino->setCurrentIndex(1);
-
-        // Estado de colas
-        QString info;
-        for (Sucursal *s : red->obtenerSucursales()) {
-            info += QString("[%1]\n  Ingreso:  %2\n  Traspaso: %3\n  Salida:   %4\n\n")
-            .arg(QString::fromStdString(s->getId()))
-                .arg(s->getColaIngreso().obtenerTamano())
-                .arg(s->getColaTraspaso().obtenerTamano())
-                .arg(s->getColaSalida().obtenerTamano());
-        }
-        if (info.isEmpty()) info = "Sin sucursales cargadas.";
-        txtColas->setText(info);
+        cOrigen->blockSignals(false); cDestino->blockSignals(false);
+        cargarProductosOrigen();
+        refrescarPanelColas();
     };
 
+    // Conexiones de selección
+    connect(cOrigen, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            [=](int) { cargarProductosOrigen(); contarSeleccionados(); });
+    connect(listaProd, &QListWidget::itemChanged, [=](QListWidgetItem*) {
+        contarSeleccionados();
+    });
+    connect(filtroProd, &QLineEdit::textChanged, [=](const QString &t) {
+        for (int i = 0; i < listaProd->count(); i++) {
+            bool vis = t.isEmpty() ||
+                       listaProd->item(i)->text().contains(t, Qt::CaseInsensitive);
+            listaProd->item(i)->setHidden(!vis);
+        }
+    });
+    connect(btnTodos, &QPushButton::clicked, [=]() {
+        for (int i = 0; i < listaProd->count(); i++)
+            if (!listaProd->item(i)->isHidden())
+                listaProd->item(i)->setCheckState(Qt::Checked);
+        contarSeleccionados();
+    });
+    connect(btnNinguno, &QPushButton::clicked, [=]() {
+        for (int i = 0; i < listaProd->count(); i++)
+            listaProd->item(i)->setCheckState(Qt::Unchecked);
+        contarSeleccionados();
+    });
+    connect(btnLote, &QPushButton::clicked, [=]() {
+        // Marca los primeros 5 visibles para demo rápida
+        int marcados = 0;
+        for (int i = 0; i < listaProd->count() && marcados < 5; i++) {
+            if (!listaProd->item(i)->isHidden()) {
+                listaProd->item(i)->setCheckState(Qt::Checked);
+                marcados++;
+            }
+        }
+        contarSeleccionados();
+    });
+
+    // ── Calcular ruta ─────────────────────────────────────────
     connect(btnCalc, &QPushButton::clicked, [=]() {
         QString o = cOrigen->currentData().toString();
         QString d = cDestino->currentData().toString();
-        QString cod = eCodigo->text().trimmed();
-
-        if (o == d) { QMessageBox::warning(w, "Error",
-                                 "Origen y destino deben ser distintos."); return; }
+        if (o == d) {
+            QMessageBox::warning(w, "Error", "Origen y destino deben ser distintos.");
+            return;
+        }
+        // Recoger códigos seleccionados
+        estado->codigos.clear();
+        for (int i = 0; i < listaProd->count(); i++) {
+            if (listaProd->item(i)->checkState() == Qt::Checked) {
+                estado->codigos.push_back(
+                    listaProd->item(i)->data(Qt::UserRole).toString().toStdString());
+            }
+        }
+        if (estado->codigos.empty()) {
+            QMessageBox::warning(w, "Error", "Marca al menos un producto a transferir.");
+            return;
+        }
 
         RedSucursales::Criterio crit = rTiempo->isChecked()
                                            ? RedSucursales::TIEMPO : RedSucursales::COSTO;
         ResultadoRuta r = red->rutaOptima(o.toStdString(), d.toStdString(), crit);
-        estado->ruta = r; estado->codigoBarra = cod;
-        estado->origenId = o; estado->destinoId = d;
+        estado->ruta = r; estado->origenId = o; estado->destinoId = d;
 
         sceneRuta->clear();
         if (!r.encontrada) {
-            QGraphicsTextItem *t = sceneRuta->addText(
-                "No existe ruta entre las sucursales.");
+            QGraphicsTextItem *t = sceneRuta->addText("No existe ruta.");
             t->setDefaultTextColor(Qt::red);
             txtDet->setText("Sin ruta encontrada.");
             btnTrans->setEnabled(false);
@@ -1677,8 +1764,7 @@ QWidget* MainWindow::crearTabTransferencia() {
             ti->setDefaultTextColor(QColor(AZUL_OSCURO));
             ti->setPos(x - ti->boundingRect().width()/2, cy - 10);
             if (s) {
-                QGraphicsTextItem *tn = sceneRuta->addText(
-                    QString::fromStdString(s->getNombre()));
+                QGraphicsTextItem *tn = sceneRuta->addText(QString::fromStdString(s->getNombre()));
                 tn->setFont(QFont("Arial", 8));
                 tn->setDefaultTextColor(QColor("#37474F"));
                 tn->setPos(x - 50, cy + 36);
@@ -1709,10 +1795,10 @@ QWidget* MainWindow::crearTabTransferencia() {
         for (const auto &nid : r.nodos) det += QString::fromStdString(nid) + " → ";
         det.chop(3);
         det += QString("\n\nPeso total : %1 %2\n")
-                   .arg(r.pesoTotal)
-                   .arg(crit == RedSucursales::TIEMPO ? "segundos" : "Q");
+                   .arg(r.pesoTotal).arg(crit == RedSucursales::TIEMPO ? "segundos" : "Q");
         det += QString("ETA total  : %1 segundos\n").arg(eta);
-        det += QString("Nodos      : %1\n\nDetalle por tramo:\n").arg(n);
+        det += QString("Lote       : %1 productos\n\n").arg(estado->codigos.size());
+        det += "Detalle por tramo:\n";
         for (int i = 0; i < n - 1; i++) {
             for (const Conexion &c : red->obtenerConexionesDe(r.nodos[i])) {
                 if (c.destinoId == r.nodos[i+1]) {
@@ -1724,106 +1810,74 @@ QWidget* MainWindow::crearTabTransferencia() {
                 }
             }
         }
-        if (!cod.isEmpty()) {
-            Sucursal *sO = red->buscarSucursal(o.toStdString());
-            Producto *p = sO ? sO->buscarPorCodigo(cod.toStdString()) : nullptr;
-            if (p) {
-                det += QString("\nProducto: %1 (%2)\nEstado: %3\nStock disponible: %4 unidades\n")
-                .arg(QString::fromStdString(p->nombre)).arg(cod)
-                    .arg(QString::fromStdString(p->estado))
-                    .arg(p->stock);
-                eUnidades->setMaximum(p->stock);
-                eUnidades->setValue(p->stock > 1 ? 1 : p->stock);
-                btnTrans->setEnabled(true);
-            } else {
-                det += "\n[!] Producto no encontrado en el origen.\n";
-                btnTrans->setEnabled(false);
-            }
-        } else {
-            det += "\n[!] Ingresa un código para habilitar la transferencia.\n";
-            btnTrans->setEnabled(false);
+        det += QString("\nProductos en el lote:\n");
+        Sucursal *sOrig = red->buscarSucursal(o.toStdString());
+        for (const std::string &cod : estado->codigos) {
+            Producto *p = sOrig ? sOrig->buscarPorCodigo(cod) : nullptr;
+            if (p) det += QString("  • %1 (stock %2)\n")
+                           .arg(QString::fromStdString(p->nombre)).arg(p->stock);
         }
         txtDet->setText(det);
+        btnTrans->setEnabled(true);
     });
 
-    // Simulador persistente (vive lo mismo que el tab)
+    // ── Simulador ─────────────────────────────────────────────
     SimuladorTransferencia *sim = new SimuladorTransferencia(w);
 
-    // Función para refrescar el panel "Colas por sucursal" en vivo
-    auto refrescarPanelColas = [=]() {
-        QString info;
-        for (Sucursal *s : red->obtenerSucursales()) {
-            int ing = s->getColaIngreso().obtenerTamano();
-            int tra = s->getColaTraspaso().obtenerTamano();
-            int sal = s->getColaSalida().obtenerTamano();
-            // Resaltar sucursales con productos en sus colas
-            QString prefix = (ing+tra+sal > 0) ? "►" : " ";
-            info += QString("%1 [%2]  ing:%3  tras:%4  sal:%5\n")
-                        .arg(prefix).arg(QString::fromStdString(s->getId()))
-                        .arg(ing).arg(tra).arg(sal);
-        }
-        if (info.isEmpty()) info = "Sin sucursales.";
-        txtColas->setText(info);
-    };
-
-    // Color del badge según etapa
-    auto colorEtapa = [](int etapa) -> QString {
-        switch (etapa) {
-        case SimuladorTransferencia::INGRESO:   return "#1976D2"; // azul
-        case SimuladorTransferencia::TRASPASO:  return "#F57C00"; // naranja
-        case SimuladorTransferencia::DESPACHO:  return "#7B1FA2"; // morado
-        case SimuladorTransferencia::EN_VIAJE:  return "#C62828"; // rojo
-        case SimuladorTransferencia::ENTREGADO: return "#2E7D32"; // verde
+    auto colorEtapa = [](int e) -> QString {
+        switch (e) {
+        case SimuladorTransferencia::INGRESO:   return "#1976D2";
+        case SimuladorTransferencia::TRASPASO:  return "#F57C00";
+        case SimuladorTransferencia::DESPACHO:  return "#7B1FA2";
+        case SimuladorTransferencia::EN_VIAJE:  return "#C62828";
+        case SimuladorTransferencia::ENTREGADO: return "#2E7D32";
         default: return "#888";
         }
     };
-    auto textoEtapa = [](int etapa) -> QString {
-        switch (etapa) {
+    auto textoEtapa = [](int e) -> QString {
+        switch (e) {
         case SimuladorTransferencia::INGRESO:   return "EN INGRESO";
         case SimuladorTransferencia::TRASPASO:  return "EN TRASPASO";
-        case SimuladorTransferencia::DESPACHO:  return "EN DESPACHO";
+        case SimuladorTransferencia::DESPACHO:  return "DESPACHANDO";
         case SimuladorTransferencia::EN_VIAJE:  return "EN VIAJE";
         case SimuladorTransferencia::ENTREGADO: return "ENTREGADO";
         default: return "—";
         }
     };
 
-    // Conectar las señales del simulador con la GUI
-    QObject::connect(sim, &SimuladorTransferencia::log,
-                     [=](const QString &msg) {
-                         QString hora = QDateTime::currentDateTime().toString("HH:mm:ss");
-                         txtLog->append(QString("[%1] %2").arg(hora).arg(msg));
-                         refrescarPanelColas();
-                     });
+    QObject::connect(sim, &SimuladorTransferencia::log, [=](const QString &msg) {
+        QString hora = QDateTime::currentDateTime().toString("HH:mm:ss");
+        txtLog->append(QString("[%1] %2").arg(hora).arg(msg));
+        refrescarPanelColas();
+        emit colasActualizadas();
+    });
 
     QObject::connect(sim, &SimuladorTransferencia::etapaIniciada,
-                     [=](const QString &sucId, int etapa, const QString &mensaje) {
+                     [=](const QString &sucId, int etapa, const QString &) {
                          lblSucActual->setText("Sucursal actual: " + sucId);
                          lblEstadoProd->setText(textoEtapa(etapa));
                          lblEstadoProd->setStyleSheet(QString(
                                                           "background: %1; color: white; font-weight: bold;"
                                                           " padding: 8px; border-radius: 4px; font-size: 13px;"
                                                           ).arg(colorEtapa(etapa)));
-
-                         // Calcular progreso aproximado
                          int n = (int)estado->ruta.nodos.size();
-                         int idxNodo = estado->ruta.nodos.size();
-                         for (int i = 0; i < n; i++) {
-                             if (QString::fromStdString(estado->ruta.nodos[i]) == sucId) {
-                                 idxNodo = i; break;
-                             }
-                         }
-                         int prog = (n > 1) ? (idxNodo * 100) / (n - 1) : 100;
+                         int idx = n;
+                         for (int i = 0; i < n; i++)
+                             if (QString::fromStdString(estado->ruta.nodos[i]) == sucId) { idx = i; break; }
+                         int prog = (n > 1) ? (idx * 100) / (n - 1) : 100;
                          barraProg->setValue(prog);
-                         barraProg->setFormat(QString("Tramo %1 de %2 — %p%")
-                                                  .arg(idxNodo + 1).arg(n));
-                         (void)mensaje;
+                         barraProg->setFormat(QString("Nodo %1 de %2 — %p%").arg(idx + 1).arg(n));
+                     });
+
+    QObject::connect(sim, &SimuladorTransferencia::productoDespachado,
+                     [=](int indice, int total, const QString &nombre) {
+                         lblSucActual->setText(
+                             QString("Despachando %1/%2: %3").arg(indice).arg(total).arg(nombre));
                      });
 
     QObject::connect(sim, &SimuladorTransferencia::productoEnTransito,
-                     [=](const QString &origen, const QString &destino) {
-                         lblSucActual->setText(
-                             QString("En tránsito: %1 → %2").arg(origen).arg(destino));
+                     [=](const QString &o, const QString &d) {
+                         lblSucActual->setText(QString("Lote en tránsito: %1 → %2").arg(o).arg(d));
                      });
 
     QObject::connect(sim, &SimuladorTransferencia::simulacionCompletada,
@@ -1831,17 +1885,13 @@ QWidget* MainWindow::crearTabTransferencia() {
                          btnTrans->setEnabled(false);
                          btnCancel->setEnabled(false);
                          btnCalc->setEnabled(true);
-                         cOrigen->setEnabled(true);
-                         cDestino->setEnabled(true);
-                         eCodigo->setEnabled(true);
-                         eUnidades->setEnabled(true);
-
+                         cOrigen->setEnabled(true); cDestino->setEnabled(true);
+                         listaProd->setEnabled(true);
                          if (exitosa) {
                              lblEstadoProd->setText("ENTREGADO ✓");
                              lblEstadoProd->setStyleSheet(QString(
                                                               "background: %1; color: white; font-weight: bold;"
-                                                              " padding: 8px; border-radius: 4px; font-size: 13px;"
-                                                              ).arg("#2E7D32"));
+                                                              " padding: 8px; border-radius: 4px; font-size: 13px;").arg("#2E7D32"));
                              barraProg->setValue(100);
                              barraProg->setFormat("Completada");
                              emit redActualizada();
@@ -1849,56 +1899,786 @@ QWidget* MainWindow::crearTabTransferencia() {
                              lblEstadoProd->setText("CANCELADA");
                              lblEstadoProd->setStyleSheet(QString(
                                                               "background: %1; color: white; font-weight: bold;"
-                                                              " padding: 8px; border-radius: 4px; font-size: 13px;"
-                                                              ).arg("#888"));
-                             barraProg->setValue(0);
+                                                              " padding: 8px; border-radius: 4px; font-size: 13px;").arg("#888"));
                          }
                          refrescarPanelColas();
                      });
 
-    // Botón Simular: arranca la simulación animada
     connect(btnTrans, &QPushButton::clicked, [=]() {
-        if (!estado->ruta.encontrada) return;
+        if (!estado->ruta.encontrada || estado->codigos.empty()) return;
         RedSucursales::Criterio crit = rTiempo->isChecked()
                                            ? RedSucursales::TIEMPO : RedSucursales::COSTO;
-
-        // Limpiar log y resetear UI
         txtLog->clear();
         barraProg->setValue(0);
         lblEstadoProd->setText("INICIANDO...");
         lblEstadoProd->setStyleSheet(QString(
                                          "background: %1; color: white; font-weight: bold;"
-                                         " padding: 8px; border-radius: 4px; font-size: 13px;"
-                                         ).arg(AZUL_MEDIO));
-
-        // Bloquear inputs durante la simulación
+                                         " padding: 8px; border-radius: 4px; font-size: 13px;").arg(AZUL_MEDIO));
         btnTrans->setEnabled(false);
         btnCalc->setEnabled(false);
         btnCancel->setEnabled(true);
-        cOrigen->setEnabled(false);
-        cDestino->setEnabled(false);
-        eCodigo->setEnabled(false);
-        eUnidades->setEnabled(false);
+        cOrigen->setEnabled(false); cDestino->setEnabled(false);
+        listaProd->setEnabled(false);
 
-        sim->iniciar(red,
-                     estado->codigoBarra.toStdString(),
+        sim->iniciar(red, estado->codigos,
                      estado->origenId.toStdString(),
                      estado->destinoId.toStdString(),
-                     crit,
-                     eUnidades->value(),
-                     cmbVelocidad->currentData().toInt());
+                     crit, cmbVelocidad->currentData().toInt());
     });
 
-    // Botón Cancelar
     connect(btnCancel, &QPushButton::clicked, [=]() { sim->cancelar(); });
 
-    // Inicializar panel de colas
+    connect(this, &MainWindow::redActualizada, refrescarCombos);
+    refrescarCombos();
     refrescarPanelColas();
-
-    connect(this, &MainWindow::redActualizada, refrescarCombosYColas);
-    refrescarCombosYColas();
     return w;
 }
+
+
+// ════════════════════════════════════════════════════════════
+// TAB — OPERACIONES (Colas en vivo + Pila de historial + Devoluciones)
+// ════════════════════════════════════════════════════════════
+QWidget* MainWindow::crearTabOperaciones() {
+    QWidget *w = new QWidget();
+    w->setStyleSheet("background: white;");
+    QVBoxLayout *lay = new QVBoxLayout(w);
+    lay->setContentsMargins(12, 12, 12, 12);
+    lay->setSpacing(10);
+
+    QString cstyle = estiloCampo();
+
+    // Selector de sucursal arriba
+    QHBoxLayout *topLay = new QHBoxLayout();
+    QLabel *lblSuc = new QLabel("Sucursal:");
+    lblSuc->setStyleSheet(QString("color: %1; font-weight: bold;").arg(TEXTO_NEGRO));
+    QComboBox *cmbSuc = new QComboBox();
+    cmbSuc->setStyleSheet(cstyle);
+    cmbSuc->setMinimumWidth(260);
+    QPushButton *btnRefrescar = new QPushButton("↻ Refrescar");
+    btnRefrescar->setStyleSheet(estiloBoton(AZUL_MEDIO));
+    topLay->addWidget(lblSuc);
+    topLay->addWidget(cmbSuc);
+    topLay->addStretch();
+    topLay->addWidget(btnRefrescar);
+    lay->addLayout(topLay);
+
+    // Splitter horizontal: colas a la izquierda, pila a la derecha
+    QSplitter *splitter = new QSplitter(Qt::Horizontal);
+
+    // ── PANEL IZQUIERDO: las 3 colas ──────────────────────────
+    QWidget *panelColas = new QWidget();
+    panelColas->setStyleSheet("background: white;");
+    QVBoxLayout *colasLay = new QVBoxLayout(panelColas);
+    colasLay->setContentsMargins(0, 0, 0, 0);
+
+    auto crearTablaCola = [&](const QString &titulo, const QString &color)
+        -> QPair<QGroupBox*, QTableWidget*> {
+        QGroupBox *gb = new QGroupBox(titulo);
+        gb->setStyleSheet(estiloGroupBox());
+        QVBoxLayout *l = new QVBoxLayout(gb);
+        l->setContentsMargins(10, 16, 10, 10);
+        QTableWidget *t = new QTableWidget();
+        t->setColumnCount(4);
+        t->setHorizontalHeaderLabels({"Posición", "Producto", "Código", "Unidades"});
+        t->horizontalHeader()->setStyleSheet(
+            QString("QHeaderView::section { background-color: %1; color: white;"
+                    " padding: 5px; font-weight: bold; font-size: 11px; border: none; }")
+                .arg(color));
+        t->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        t->setStyleSheet(estiloTabla());
+        t->verticalHeader()->setVisible(false);
+        t->setMaximumHeight(150);
+        // Anchos de columna FIJOS — evita que resizeColumnsToContents
+        // recalcule y haga saltar las columnas en cada refresco (distorsión).
+        t->horizontalHeader()->setSectionResizeMode(QHeaderView::Fixed);
+        t->setColumnWidth(0, 130); // Posición (lleva etiqueta FRENTE/FINAL)
+        t->setColumnWidth(1, 150); // Producto
+        t->setColumnWidth(2, 100); // Código
+        t->horizontalHeader()->setStretchLastSection(true); // Unidades llena el resto
+        l->addWidget(t);
+        return {gb, t};
+    };
+
+    auto colaIng = crearTablaCola("Cola de Ingreso (FIFO)", "#1976D2");
+    auto colaTra = crearTablaCola("Cola de Traspaso (FIFO)", "#F57C00");
+    auto colaSal = crearTablaCola("Cola de Salida (FIFO)", "#7B1FA2");
+    colasLay->addWidget(colaIng.first);
+    colasLay->addWidget(colaTra.first);
+    colasLay->addWidget(colaSal.first);
+    splitter->addWidget(panelColas);
+
+    // ── PANEL DERECHO: pila de operaciones + devoluciones ─────
+    QWidget *panelPila = new QWidget();
+    panelPila->setStyleSheet("background: white;");
+    QVBoxLayout *pilaLay = new QVBoxLayout(panelPila);
+    pilaLay->setContentsMargins(0, 0, 0, 0);
+
+    // Historial de operaciones (la pila)
+    QGroupBox *gbPila = new QGroupBox("Pila de Operaciones (LIFO — historial)");
+    gbPila->setStyleSheet(estiloGroupBox());
+    QVBoxLayout *gpLay = new QVBoxLayout(gbPila);
+    gpLay->setContentsMargins(10, 16, 10, 10);
+
+    QTableWidget *tblPila = new QTableWidget();
+    tblPila->setColumnCount(4);
+    tblPila->setHorizontalHeaderLabels({"#", "Operación", "Producto", "Detalle"});
+    tblPila->horizontalHeader()->setStyleSheet(estiloHeader());
+    tblPila->horizontalHeader()->setSectionResizeMode(QHeaderView::Fixed);
+    tblPila->setColumnWidth(0, 140); // # (lleva etiqueta CIMA)
+    tblPila->setColumnWidth(1, 110); // Operación
+    tblPila->setColumnWidth(2, 150); // Producto
+    tblPila->horizontalHeader()->setStretchLastSection(true); // Detalle llena el resto
+    tblPila->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    tblPila->setStyleSheet(estiloTabla());
+    tblPila->verticalHeader()->setVisible(false);
+    gpLay->addWidget(tblPila);
+
+    QPushButton *btnDeshacer = new QPushButton("↶  Deshacer última operación (rollback)");
+    btnDeshacer->setStyleSheet(estiloBoton(ROJO));
+    gpLay->addWidget(btnDeshacer);
+    pilaLay->addWidget(gbPila, 1);
+
+    // Flujo de devoluciones
+    QGroupBox *gbDev = new QGroupBox("Control de Cambios — Devolución de productos");
+    gbDev->setStyleSheet(estiloGroupBox());
+    QFormLayout *devLay = new QFormLayout(gbDev);
+    devLay->setContentsMargins(12, 16, 12, 12);
+    devLay->setSpacing(8);
+
+    QLineEdit *eCodDev = new QLineEdit();
+    eCodDev->setPlaceholderText("Código de barra");
+    eCodDev->setStyleSheet(cstyle);
+    QSpinBox *eUnidDev = new QSpinBox();
+    eUnidDev->setRange(1, 99999);
+    eUnidDev->setValue(1);
+    eUnidDev->setStyleSheet(cstyle);
+    QPushButton *btnDevolver = new QPushButton("↩  Registrar devolución");
+    btnDevolver->setStyleSheet(estiloBoton(VERDE));
+
+    auto mkLbl = [](const QString &t) {
+        QLabel *l = new QLabel(t);
+        l->setStyleSheet(QString("color: %1; font-weight: bold;").arg(TEXTO_NEGRO));
+        return l;
+    };
+    devLay->addRow(mkLbl("Código:"),   eCodDev);
+    devLay->addRow(mkLbl("Unidades:"), eUnidDev);
+    devLay->addRow("", btnDevolver);
+    pilaLay->addWidget(gbDev);
+
+    splitter->addWidget(panelPila);
+    splitter->setSizes({480, 480});
+    lay->addWidget(splitter, 1);
+
+    // ── Lógica de refresco ────────────────────────────────────
+    auto refrescarCombo = [=]() {
+        QString prev = cmbSuc->currentData().toString();
+        cmbSuc->clear();
+        for (Sucursal *s : red->obtenerSucursales())
+            cmbSuc->addItem(
+                QString::fromStdString(s->getId() + " — " + s->getNombre()),
+                QString::fromStdString(s->getId()));
+        for (int i = 0; i < cmbSuc->count(); i++)
+            if (cmbSuc->itemData(i).toString() == prev) {
+                cmbSuc->setCurrentIndex(i); break;
+            }
+    };
+
+    auto mkItem = [](const QString &v) {
+        QTableWidgetItem *it = new QTableWidgetItem(v);
+        it->setForeground(QColor(TEXTO_NEGRO));
+        return it;
+    };
+
+    auto refrescarColas = [=]() {
+        QString sucId = cmbSuc->currentData().toString();
+        Sucursal *s = red->buscarSucursal(sucId.toStdString());
+        if (!s) {
+            colaIng.second->setRowCount(0);
+            colaTra.second->setRowCount(0);
+            colaSal.second->setRowCount(0);
+            return;
+        }
+
+        // Congelar el repintado de las 3 tablas mientras se reconstruyen.
+        // Esto elimina el parpadeo cuando llegan muchas actualizaciones
+        // seguidas (procesos concurrentes).
+        colaIng.second->setUpdatesEnabled(false);
+        colaTra.second->setUpdatesEnabled(false);
+        colaSal.second->setUpdatesEnabled(false);
+
+        // Llenar cada tabla con el contenido de su cola
+        auto llenarCola = [&](QTableWidget *t, Cola<Producto> &cola) {
+            int n = cola.obtenerTamano();
+            t->setRowCount(0);
+            if (n == 0) return;
+            const int MAX = 100;
+            Producto buf[MAX];
+            int lim = (n < MAX) ? n : MAX;
+            cola.obtenerContenido(buf, lim);
+            t->setRowCount(lim);
+            for (int i = 0; i < lim; i++) {
+                // Marcar el rol de cada posición en la cola (FIFO):
+                //   fila 0      = FRENTE  → el próximo en SALIR
+                //   última fila = FINAL   → el último que ENTRÓ
+                QString etiqueta;
+                if (i == 0 && lim == 1)
+                    etiqueta = "ÚNICO";
+                else if (i == 0)
+                    etiqueta = "◄ FRENTE (sale)";
+                else if (i == lim - 1)
+                    etiqueta = "FINAL (entró) ►";
+                else
+                    etiqueta = QString::number(i + 1);
+
+                QTableWidgetItem *itPos = mkItem(etiqueta);
+                QTableWidgetItem *itNom = mkItem(QString::fromStdString(buf[i].nombre));
+                QTableWidgetItem *itCod = mkItem(QString::fromStdString(buf[i].codigoBarra));
+                QTableWidgetItem *itStk = mkItem(QString::number(buf[i].stock));
+
+                // Colorear: frente en verde (sale), final en azul (entró)
+                if (i == 0) {
+                    QColor verde("#C8E6C9");
+                    for (auto *it : {itPos, itNom, itCod, itStk}) {
+                        it->setBackground(verde);
+                        it->setForeground(QColor("#1B5E20"));
+                    }
+                    QFont f = itPos->font(); f.setBold(true); itPos->setFont(f);
+                } else if (i == lim - 1) {
+                    QColor azul("#BBDEFB");
+                    for (auto *it : {itPos, itNom, itCod, itStk}) {
+                        it->setBackground(azul);
+                        it->setForeground(QColor("#0D47A1"));
+                    }
+                    QFont f = itPos->font(); f.setBold(true); itPos->setFont(f);
+                }
+                t->setItem(i, 0, itPos);
+                t->setItem(i, 1, itNom);
+                t->setItem(i, 2, itCod);
+                t->setItem(i, 3, itStk);
+            }
+            // No llamamos resizeColumnsToContents: los anchos son fijos
+            // (se configuraron en crearTablaCola). Esto evita la distorsión
+            // visual cuando el refresco ocurre muchas veces por segundo.
+        };
+        llenarCola(colaIng.second, s->getColaIngreso());
+        llenarCola(colaTra.second, s->getColaTraspaso());
+        llenarCola(colaSal.second, s->getColaSalida());
+
+        // Actualizar títulos con el conteo
+        colaIng.first->setTitle(QString("Cola de Ingreso (FIFO) — %1")
+                                    .arg(s->getColaIngreso().obtenerTamano()));
+        colaTra.first->setTitle(QString("Cola de Traspaso (FIFO) — %1")
+                                    .arg(s->getColaTraspaso().obtenerTamano()));
+        colaSal.first->setTitle(QString("Cola de Salida (FIFO) — %1")
+                                    .arg(s->getColaSalida().obtenerTamano()));
+
+        // Reactivar el repintado (provoca un único redibujado limpio)
+        colaIng.second->setUpdatesEnabled(true);
+        colaTra.second->setUpdatesEnabled(true);
+        colaSal.second->setUpdatesEnabled(true);
+    };
+
+    auto refrescarPila = [=]() {
+        QString sucId = cmbSuc->currentData().toString();
+        Sucursal *s = red->buscarSucursal(sucId.toStdString());
+        tblPila->setRowCount(0);
+        if (!s) return;
+
+        int n = s->contarOperaciones();
+        if (n == 0) {
+            gbPila->setTitle("Pila de Operaciones (LIFO) — vacía");
+            return;
+        }
+        const int MAX = 100;
+        Operacion buf[MAX];
+        int lim = (n < MAX) ? n : MAX;
+        s->obtenerHistorial(buf, lim);
+        tblPila->setRowCount(lim);
+        for (int i = 0; i < lim; i++) {
+            QString tipo;
+            switch (buf[i].tipo) {
+            case Operacion::AGREGAR:    tipo = "AGREGAR";    break;
+            case Operacion::ELIMINAR:   tipo = "ELIMINAR";   break;
+            case Operacion::TRANSFERIR: tipo = "TRANSFERIR"; break;
+            }
+            QString detalle;
+            if (buf[i].tipo == Operacion::TRANSFERIR)
+                detalle = QString("→ %1").arg(
+                    QString::fromStdString(buf[i].sucursalDestino));
+            else
+                detalle = QString("stock: %1").arg(buf[i].producto.stock);
+
+            // La CIMA (i==0) es la próxima en deshacerse — la resaltamos
+            QString posTexto = (i == 0) ? "◄ CIMA (deshacer)"
+                                        : QString::number(i + 1);
+            QTableWidgetItem *itPos = mkItem(posTexto);
+            QTableWidgetItem *itTipo = mkItem(tipo);
+            QTableWidgetItem *itNom = mkItem(QString::fromStdString(buf[i].producto.nombre));
+            QTableWidgetItem *itDet = mkItem(detalle);
+
+            if (i == 0) {
+                QColor naranja("#FFE0B2");
+                for (auto *it : {itPos, itTipo, itNom, itDet}) {
+                    it->setBackground(naranja);
+                    it->setForeground(QColor("#E65100"));
+                }
+                QFont f = itPos->font(); f.setBold(true); itPos->setFont(f);
+            }
+            tblPila->setItem(i, 0, itPos);
+            tblPila->setItem(i, 1, itTipo);
+            tblPila->setItem(i, 2, itNom);
+            tblPila->setItem(i, 3, itDet);
+        }
+        // Anchos fijos (configurados al crear la tabla) — sin resize dinámico
+        gbPila->setTitle(QString("Pila de Operaciones (LIFO — historial) — %1").arg(n));
+    };
+
+    auto refrescarTodo = [=]() {
+        refrescarColas();
+        refrescarPila();
+    };
+
+    connect(cmbSuc, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            [=](int) { refrescarTodo(); });
+    connect(btnRefrescar, &QPushButton::clicked, refrescarTodo);
+
+    // Deshacer última operación
+    connect(btnDeshacer, &QPushButton::clicked, [=]() {
+        QString sucId = cmbSuc->currentData().toString();
+        Sucursal *s = red->buscarSucursal(sucId.toStdString());
+        if (!s) return;
+        if (!s->hayOperacionesPendientes()) {
+            QMessageBox::information(w, "Info", "No hay operaciones que deshacer.");
+            return;
+        }
+        if (s->deshacerUltimaOperacion()) {
+            QMessageBox::information(w, "Rollback",
+                                     "Última operación deshecha correctamente.");
+            refrescarTodo();
+            emit redActualizada();
+        }
+    });
+
+    // Registrar devolución
+    connect(btnDevolver, &QPushButton::clicked, [=]() {
+        QString sucId = cmbSuc->currentData().toString();
+        Sucursal *s = red->buscarSucursal(sucId.toStdString());
+        if (!s) return;
+        QString cod = eCodDev->text().trimmed();
+        if (cod.isEmpty()) {
+            QMessageBox::warning(w, "Error", "El código no puede estar vacío.");
+            return;
+        }
+        if (s->devolverProducto(cod.toStdString(), eUnidDev->value())) {
+            QMessageBox::information(w, "Devolución",
+                                     QString("Devolución registrada: %1 unidades del producto %2.")
+                                         .arg(eUnidDev->value()).arg(cod));
+            eCodDev->clear();
+            eUnidDev->setValue(1);
+            refrescarTodo();
+            emit redActualizada();
+        } else {
+            QMessageBox::warning(w, "Error",
+                                 "No se encontró el producto en esta sucursal.\n"
+                                 "Solo se pueden devolver productos que ya existen en el inventario.");
+        }
+    });
+
+    // Auto-refresh cuando la red cambie
+    connect(this, &MainWindow::redActualizada, [=]() {
+        refrescarCombo();
+        refrescarTodo();
+    });
+
+    // ── Refresco con COALESCING para evitar distorsión ────────
+    // El GestorProcesos puede emitir colasActualizadas() muchas veces
+    // por segundo. En vez de refrescar en cada señal (lo que distorsiona
+    // las tablas), marcamos "refresco pendiente" y un timer único hace
+    // el refresco real a un ritmo controlado (cada 200ms como máximo).
+    bool *refrescoPendiente = new bool(false);
+    QTimer *timerRefresco = new QTimer(w);
+    timerRefresco->setInterval(200);
+    connect(timerRefresco, &QTimer::timeout, [=]() {
+        if (*refrescoPendiente) {
+            *refrescoPendiente = false;
+            // Solo refrescamos si este tab es el visible (ahorra trabajo)
+            if (tabs->currentWidget() == w) {
+                refrescarColas();
+            }
+        }
+    });
+    timerRefresco->start();
+
+    connect(this, &MainWindow::colasActualizadas, [=]() {
+        // No refrescamos directamente: marcamos pendiente. El timer
+        // hará el refresco real al siguiente tick de 200ms.
+        *refrescoPendiente = true;
+    });
+
+    // Al cambiar a este tab, refrescar inmediatamente para ver el estado actual
+    connect(tabs, &QTabWidget::currentChanged, [=](int) {
+        if (tabs->currentWidget() == w) {
+            refrescarCombo();
+            refrescarTodo();
+        }
+    });
+
+    refrescarCombo();
+    refrescarTodo();
+    return w;
+}
+
+// ════════════════════════════════════════════════════════════
+// TAB — PROCESOS (hilos visuales: transferencias entrada→salida)
+// ════════════════════════════════════════════════════════════
+QWidget* MainWindow::crearTabProcesos() {
+    QWidget *w = new QWidget();
+    w->setStyleSheet("background: white;");
+    QHBoxLayout *lay = new QHBoxLayout(w);
+    lay->setContentsMargins(16, 16, 16, 16);
+    lay->setSpacing(12);
+
+    QString cstyle = estiloCampo();
+
+    // ── Panel izquierdo: grupos y controles ───────────────────
+    QWidget *panelIzq = new QWidget();
+    panelIzq->setFixedWidth(440);
+    QVBoxLayout *izqLay = new QVBoxLayout(panelIzq);
+    izqLay->setContentsMargins(0, 0, 0, 0);
+    izqLay->setSpacing(10);
+
+    QLabel *titulo = new QLabel("Procesos por grupo (origen → destino)");
+    titulo->setStyleSheet(QString(
+                              "color: %1; font-size: 15px; font-weight: bold;"
+                              " border-bottom: 2px solid %2; padding-bottom: 6px;"
+                              ).arg(AZUL_OSCURO).arg(AZUL_MEDIO));
+    izqLay->addWidget(titulo);
+
+    QLabel *info = new QLabel(
+        "Los productos con sucursal de entrada distinta a la de salida se agrupan "
+        "por ruta (mismo origen y destino). Procesá un grupo a la vez: cada lote "
+        "viaja en orden FIFO sin mezclarse con otros destinos.");
+    info->setWordWrap(true);
+    info->setStyleSheet(QString(
+                            "color: %1; font-size: 11px; background: %2; padding: 8px; border-radius: 4px;"
+                            ).arg(TEXTO_NEGRO).arg(GRIS_CLARO));
+    izqLay->addWidget(info);
+
+    // Controles
+    QGroupBox *gbCtrl = new QGroupBox("Configuración");
+    gbCtrl->setStyleSheet(estiloGroupBox());
+    QFormLayout *ctrlLay = new QFormLayout(gbCtrl);
+    ctrlLay->setContentsMargins(12, 14, 12, 12);
+    ctrlLay->setSpacing(8);
+
+    auto mkLbl = [](const QString &t) {
+        QLabel *l = new QLabel(t);
+        l->setStyleSheet(QString("color: %1; font-weight: bold;").arg(TEXTO_NEGRO));
+        return l;
+    };
+
+    QComboBox *cmbCrit = new QComboBox();
+    cmbCrit->addItem("Mínimo tiempo", 0);
+    cmbCrit->addItem("Mínimo costo", 1);
+    cmbCrit->setStyleSheet(cstyle);
+    QComboBox *cmbVel = new QComboBox();
+    cmbVel->addItem("10x", 10); cmbVel->addItem("30x", 30);
+    cmbVel->addItem("60x", 60); cmbVel->addItem("120x", 120);
+    cmbVel->setCurrentIndex(1);
+    cmbVel->setStyleSheet(cstyle);
+    ctrlLay->addRow(mkLbl("Criterio:"),  cmbCrit);
+    ctrlLay->addRow(mkLbl("Velocidad:"), cmbVel);
+    izqLay->addWidget(gbCtrl);
+
+    QHBoxLayout *btnLay = new QHBoxLayout();
+    QPushButton *btnDetectar = new QPushButton("↻ Detectar grupos");
+    QPushButton *btnProcesar = new QPushButton("▶ Procesar grupo");
+    QPushButton *btnCancelar = new QPushButton("✕ Cancelar");
+    btnDetectar->setStyleSheet(estiloBoton(AZUL_MEDIO));
+    btnProcesar->setStyleSheet(estiloBoton(VERDE));
+    btnCancelar->setStyleSheet(estiloBoton(ROJO));
+    btnProcesar->setEnabled(false);
+    btnCancelar->setEnabled(false);
+    btnLay->addWidget(btnDetectar);
+    btnLay->addWidget(btnProcesar);
+    btnLay->addWidget(btnCancelar);
+    izqLay->addLayout(btnLay);
+
+    // Tabla de grupos
+    QGroupBox *gbGrupos = new QGroupBox("Grupos de transferencia");
+    gbGrupos->setStyleSheet(estiloGroupBox());
+    QVBoxLayout *grpLay = new QVBoxLayout(gbGrupos);
+    grpLay->setContentsMargins(10, 16, 10, 10);
+    QTableWidget *tblGrupos = new QTableWidget();
+    tblGrupos->setColumnCount(5);
+    tblGrupos->setHorizontalHeaderLabels({"Origen", "Destino", "Productos", "Ruta", "Estado"});
+    tblGrupos->horizontalHeader()->setStyleSheet(estiloHeader());
+    tblGrupos->horizontalHeader()->setSectionResizeMode(QHeaderView::Fixed);
+    tblGrupos->setColumnWidth(0, 70);
+    tblGrupos->setColumnWidth(1, 70);
+    tblGrupos->setColumnWidth(2, 70);
+    tblGrupos->setColumnWidth(3, 120);
+    tblGrupos->horizontalHeader()->setStretchLastSection(true);
+    tblGrupos->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    tblGrupos->setSelectionBehavior(QAbstractItemView::SelectRows);
+    tblGrupos->setStyleSheet(estiloTabla());
+    tblGrupos->verticalHeader()->setVisible(false);
+    grpLay->addWidget(tblGrupos);
+    izqLay->addWidget(gbGrupos, 1);
+    lay->addWidget(panelIzq);
+
+    // ── Panel derecho: estado de la simulación del grupo ──────
+    QWidget *panelDer = new QWidget();
+    QVBoxLayout *derLay = new QVBoxLayout(panelDer);
+    derLay->setContentsMargins(0, 0, 0, 0);
+    derLay->setSpacing(10);
+
+    QGroupBox *gbEstado = new QGroupBox("Estado del grupo en proceso");
+    gbEstado->setStyleSheet(estiloGroupBox());
+    QVBoxLayout *estLay = new QVBoxLayout(gbEstado);
+    estLay->setContentsMargins(12, 16, 12, 12);
+
+    QLabel *lblGrupoActual = new QLabel("Ningún grupo en proceso");
+    lblGrupoActual->setStyleSheet(QString(
+                                      "color: %1; font-size: 13px; font-weight: bold; padding: 4px;").arg(AZUL_OSCURO));
+    estLay->addWidget(lblGrupoActual);
+
+    QLabel *lblEtapa = new QLabel("—");
+    lblEtapa->setAlignment(Qt::AlignCenter);
+    lblEtapa->setStyleSheet(QString(
+                                "background: %1; color: white; font-weight: bold;"
+                                " padding: 8px; border-radius: 4px; font-size: 13px;").arg("#888"));
+    estLay->addWidget(lblEtapa);
+
+    QLabel *lblSucActual = new QLabel("Sucursal actual: —");
+    lblSucActual->setStyleSheet(QString("color: %1; font-size: 12px; padding: 4px;").arg(TEXTO_NEGRO));
+    estLay->addWidget(lblSucActual);
+
+    QProgressBar *barra = new QProgressBar();
+    barra->setRange(0, 100); barra->setValue(0);
+    barra->setStyleSheet(QString(
+                             "QProgressBar { border: 1px solid %1; border-radius: 4px;"
+                             " text-align: center; color: %2; background: white; height: 22px;}"
+                             "QProgressBar::chunk { background: %3; }"
+                             ).arg(GRIS_BORDE).arg(TEXTO_NEGRO).arg(AZUL_MEDIO));
+    estLay->addWidget(barra);
+    derLay->addWidget(gbEstado);
+
+    QGroupBox *gbLog = new QGroupBox("Log de eventos del grupo");
+    gbLog->setStyleSheet(estiloGroupBox());
+    QVBoxLayout *logLay = new QVBoxLayout(gbLog);
+    logLay->setContentsMargins(12, 16, 12, 12);
+    QTextEdit *txtLog = new QTextEdit();
+    txtLog->setReadOnly(true);
+    txtLog->setStyleSheet(estiloTextEdit());
+    logLay->addWidget(txtLog);
+    derLay->addWidget(gbLog, 1);
+    lay->addWidget(panelDer, 1);
+
+    // ── Estructura de grupos ──────────────────────────────────
+    struct Grupo {
+        std::string origen;
+        std::string destino;
+        std::vector<std::string> codigos;
+        QString rutaStr;
+        bool completado;
+    };
+    auto *grupos = new std::vector<Grupo>();
+
+    auto mkItem = [](const QString &v) {
+        QTableWidgetItem *it = new QTableWidgetItem(v);
+        it->setForeground(QColor(TEXTO_NEGRO));
+        return it;
+    };
+
+    auto refrescarTablaGrupos = [=]() {
+        tblGrupos->setRowCount((int)grupos->size());
+        for (int i = 0; i < (int)grupos->size(); i++) {
+            const Grupo &g = (*grupos)[i];
+            tblGrupos->setItem(i, 0, mkItem(QString::fromStdString(g.origen)));
+            tblGrupos->setItem(i, 1, mkItem(QString::fromStdString(g.destino)));
+            tblGrupos->setItem(i, 2, mkItem(QString::number(g.codigos.size())));
+            tblGrupos->setItem(i, 3, mkItem(g.rutaStr));
+            QTableWidgetItem *itEst = mkItem(g.completado ? "Completado" : "Pendiente");
+            itEst->setForeground(QColor(g.completado ? "#2E7D32" : "#E65100"));
+            QFont f = itEst->font(); f.setBold(true); itEst->setFont(f);
+            tblGrupos->setItem(i, 4, itEst);
+        }
+    };
+
+    // ── Simulador (reutilizado) ───────────────────────────────
+    SimuladorTransferencia *sim = new SimuladorTransferencia(w);
+    int *grupoEnProceso = new int(-1);
+
+    auto colorEtapa = [](int e) -> QString {
+        switch (e) {
+        case SimuladorTransferencia::INGRESO:   return "#1976D2";
+        case SimuladorTransferencia::TRASPASO:  return "#F57C00";
+        case SimuladorTransferencia::DESPACHO:  return "#7B1FA2";
+        case SimuladorTransferencia::EN_VIAJE:  return "#C62828";
+        case SimuladorTransferencia::ENTREGADO: return "#2E7D32";
+        default: return "#888";
+        }
+    };
+    auto textoEtapa = [](int e) -> QString {
+        switch (e) {
+        case SimuladorTransferencia::INGRESO:   return "EN INGRESO";
+        case SimuladorTransferencia::TRASPASO:  return "EN TRASPASO";
+        case SimuladorTransferencia::DESPACHO:  return "DESPACHANDO";
+        case SimuladorTransferencia::EN_VIAJE:  return "EN VIAJE";
+        case SimuladorTransferencia::ENTREGADO: return "ENTREGADO";
+        default: return "—";
+        }
+    };
+
+    QObject::connect(sim, &SimuladorTransferencia::log, [=](const QString &msg) {
+        QString hora = QDateTime::currentDateTime().toString("HH:mm:ss");
+        txtLog->append(QString("[%1] %2").arg(hora).arg(msg));
+        emit colasActualizadas();
+    });
+    QObject::connect(sim, &SimuladorTransferencia::etapaIniciada,
+                     [=](const QString &sucId, int etapa, const QString &) {
+                         lblSucActual->setText("Sucursal actual: " + sucId);
+                         lblEtapa->setText(textoEtapa(etapa));
+                         lblEtapa->setStyleSheet(QString(
+                                                     "background: %1; color: white; font-weight: bold;"
+                                                     " padding: 8px; border-radius: 4px; font-size: 13px;").arg(colorEtapa(etapa)));
+                     });
+    QObject::connect(sim, &SimuladorTransferencia::productoDespachado,
+                     [=](int idx, int total, const QString &nombre) {
+                         barra->setValue((idx * 100) / total);
+                         barra->setFormat(QString("%1/%2 — %p%").arg(idx).arg(total));
+                         lblSucActual->setText(QString("Procesando %1/%2: %3").arg(idx).arg(total).arg(nombre));
+                     });
+    QObject::connect(sim, &SimuladorTransferencia::productoEnTransito,
+                     [=](const QString &o, const QString &d) {
+                         lblSucActual->setText(QString("Lote en tránsito: %1 → %2").arg(o).arg(d));
+                     });
+    QObject::connect(sim, &SimuladorTransferencia::simulacionCompletada,
+                     [=](bool exitosa) {
+                         btnProcesar->setEnabled(true);
+                         btnDetectar->setEnabled(true);
+                         btnCancelar->setEnabled(false);
+                         cmbCrit->setEnabled(true); cmbVel->setEnabled(true);
+                         tblGrupos->setEnabled(true);
+                         if (exitosa && *grupoEnProceso >= 0 &&
+                             *grupoEnProceso < (int)grupos->size()) {
+                             (*grupos)[*grupoEnProceso].completado = true;
+                             lblEtapa->setText("GRUPO COMPLETADO ✓");
+                             lblEtapa->setStyleSheet(QString(
+                                                         "background: %1; color: white; font-weight: bold;"
+                                                         " padding: 8px; border-radius: 4px; font-size: 13px;").arg("#2E7D32"));
+                             barra->setValue(100); barra->setFormat("Completado");
+                             emit redActualizada();
+                         } else if (!exitosa) {
+                             lblEtapa->setText("CANCELADO");
+                             lblEtapa->setStyleSheet(QString(
+                                                         "background: %1; color: white; font-weight: bold;"
+                                                         " padding: 8px; border-radius: 4px; font-size: 13px;").arg("#888"));
+                         }
+                         *grupoEnProceso = -1;
+                         refrescarTablaGrupos();
+                     });
+
+    // ── Detectar grupos ───────────────────────────────────────
+    connect(btnDetectar, &QPushButton::clicked, [=]() {
+        if (red->contarPendientes() == 0) {
+            QMessageBox::information(w, "Sin pendientes",
+                                     "No hay transferencias pendientes.\n\n"
+                                     "Cargá un CSV con formato entrada/salida donde algunos "
+                                     "productos tengan SucursalEntradaId distinta a SucursalSalidaId.");
+            return;
+        }
+        RedSucursales::Criterio crit = (cmbCrit->currentData().toInt() == 0)
+                                           ? RedSucursales::TIEMPO : RedSucursales::COSTO;
+
+        // Agrupar las pendientes por par (origen, destino)
+        grupos->clear();
+        auto buscarGrupo = [&](const std::string &o, const std::string &d) -> Grupo* {
+            for (auto &g : *grupos)
+                if (g.origen == o && g.destino == d) return &g;
+            return nullptr;
+        };
+        for (const auto &tp : red->obtenerPendientes()) {
+            Grupo *g = buscarGrupo(tp.origenId, tp.destinoId);
+            if (!g) {
+                Grupo nuevo;
+                nuevo.origen = tp.origenId;
+                nuevo.destino = tp.destinoId;
+                nuevo.completado = false;
+                // Calcular la ruta para mostrarla
+                ResultadoRuta r = red->rutaOptima(tp.origenId, tp.destinoId, crit);
+                if (r.encontrada) {
+                    for (size_t k = 0; k < r.nodos.size(); k++) {
+                        nuevo.rutaStr += QString::fromStdString(r.nodos[k]);
+                        if (k + 1 < r.nodos.size()) nuevo.rutaStr += "→";
+                    }
+                } else {
+                    nuevo.rutaStr = "sin ruta";
+                }
+                grupos->push_back(nuevo);
+                g = &grupos->back();
+            }
+            g->codigos.push_back(tp.codigoBarra);
+        }
+        refrescarTablaGrupos();
+        txtLog->append(QString("Detectados %1 grupos de transferencia.").arg(grupos->size()));
+        btnProcesar->setEnabled(grupos->size() > 0);
+    });
+
+    // ── Procesar el grupo seleccionado ────────────────────────
+    connect(btnProcesar, &QPushButton::clicked, [=]() {
+        int row = tblGrupos->currentRow();
+        if (row < 0) {
+            QMessageBox::information(w, "Info", "Seleccioná un grupo de la tabla.");
+            return;
+        }
+        if (row >= (int)grupos->size()) return;
+        Grupo &g = (*grupos)[row];
+        if (g.completado) {
+            QMessageBox::information(w, "Info", "Este grupo ya fue procesado.");
+            return;
+        }
+        if (g.codigos.empty()) return;
+
+        RedSucursales::Criterio crit = (cmbCrit->currentData().toInt() == 0)
+                                           ? RedSucursales::TIEMPO : RedSucursales::COSTO;
+
+        *grupoEnProceso = row;
+        txtLog->clear();
+        barra->setValue(0);
+        lblGrupoActual->setText(QString("Procesando grupo: %1 → %2  (%3 productos)")
+                                    .arg(QString::fromStdString(g.origen))
+                                    .arg(QString::fromStdString(g.destino))
+                                    .arg(g.codigos.size()));
+        lblEtapa->setText("INICIANDO...");
+        lblEtapa->setStyleSheet(QString(
+                                    "background: %1; color: white; font-weight: bold;"
+                                    " padding: 8px; border-radius: 4px; font-size: 13px;").arg(AZUL_MEDIO));
+
+        btnProcesar->setEnabled(false);
+        btnDetectar->setEnabled(false);
+        btnCancelar->setEnabled(true);
+        cmbCrit->setEnabled(false); cmbVel->setEnabled(false);
+        tblGrupos->setEnabled(false);
+
+        sim->iniciar(red, g.codigos, g.origen, g.destino,
+                     crit, cmbVel->currentData().toInt());
+    });
+
+    connect(btnCancelar, &QPushButton::clicked, [=]() { sim->cancelar(); });
+
+    // Refrescar la tabla de grupos al entrar al tab
+    connect(this, &MainWindow::redActualizada, [=]() {
+        // Si cambió la red (ej: se limpió), reseteamos los grupos
+        if (red->contarPendientes() == 0 && !grupos->empty() && *grupoEnProceso < 0) {
+            // no limpiamos automáticamente para no perder el historial visual
+        }
+    });
+
+    return w;
+}
+
 
 // ════════════════════════════════════════════════════════════
 // TAB 6 — RENDIMIENTO
