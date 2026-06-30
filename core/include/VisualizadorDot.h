@@ -7,6 +7,7 @@
 #include "ArbolAVL.h"
 #include "ArbolB.h"
 #include "ArbolBPlus.h"
+#include "TablaHash.h"
 #include <string>
 #include <fstream>
 
@@ -69,6 +70,11 @@ public:
 
     // Genera output/arbolBP.dot con el árbol B+ completo (0 = sin límite)
     bool generarArbolBPlus(ArbolBPlus *arbolBPlus, int maxNodos = 0) const;
+
+    // Genera output/hash.dot mostrando los buckets, las cadenas de colisión
+    // y el factor de carga de la tabla hash.
+    // soloConContenido = true muestra solo los buckets ocupados (más compacto).
+    bool generarHash(const TablaHash *hash, bool soloConContenido = true) const;
 
     // Genera los tres archivos de una vez y muestra instrucciones
     void generarTodos(ArbolAVL *avl, ArbolB *arbolB,

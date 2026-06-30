@@ -1,5 +1,6 @@
 #include "VisualizadorDot.h"
 #include <queue>
+#include <iomanip>
 #include <iostream>
 #include <sstream>
 
@@ -420,4 +421,104 @@ void VisualizadorDot::generarTodos(ArbolAVL *avl, ArbolB *arbolB,
         std::cout << "  cd <ruta_del_proyecto>\n";
         std::cout << "  dot -Tpng output\\avl.dot -o output\\avl.png\n";
     }
+}
+
+// ════════════════════════════════════════════════════════════
+// Visualización de la Tabla Hash (colisiones + factor de carga)
+// ════════════════════════════════════════════════════════════
+bool VisualizadorDot::generarHash(const TablaHash *hash, bool soloConContenido) const {
+    std::string ruta = carpetaOutput + "/hash.dot";
+    std::ofstream out(ruta);
+    if (!out.is_open()) {
+        std::cout << "[Dot] ERROR: no se pudo crear '" << ruta << "'.\n";
+        return false;
+    }
+
+    int capacidad  = hash->obtenerCapacidad();
+    int elementos  = hash->obtenerTamano();
+    double fc      = hash->factorCarga();
+
+    // Calcular estadísticas de distribución para mostrarlas
+    int bucketsUsados = 0;
+    int maxCadena = 0;
+    int conColision = 0; // buckets con 2+ elementos
+    for (int i = 0; i < capacidad; i++) {
+        int largo = 0;
+        for (NodoHash *n = hash->obtenerBucket(i); n != nullptr; n = n->siguiente)
+            largo++;
+        if (largo > 0) bucketsUsados++;
+        if (largo > 1) conColision++;
+        if (largo > maxCadena) maxCadena = largo;
+    }
+
+    out << "// Tabla Hash — buckets, colisiones y factor de carga\n";
+    out << "// Convertir: dot -Tpng output/hash.dot -o output/hash.png\n";
+    out << "digraph TablaHash {\n";
+    out << "    rankdir=LR;\n"; // izquierda a derecha: bucket -> cadena
+    out << "    graph [label=\"Tabla Hash (chaining, djb2)\\n"
+        << "Capacidad: " << capacidad << " buckets  |  "
+        << "Elementos: " << elementos << "\\n"
+        << "Factor de carga: " << std::fixed << std::setprecision(3) << fc
+        << "  |  Buckets usados: " << bucketsUsados << "/" << capacidad << "\\n"
+        << "Buckets con colision: " << conColision
+        << "  |  Cadena mas larga: " << maxCadena << "\""
+        << " fontsize=14 labelloc=t];\n";
+    out << "    node [fontname=\"Courier\" fontsize=9];\n\n";
+
+    // Columna de índices del arreglo (los buckets)
+    for (int i = 0; i < capacidad; i++) {
+        NodoHash *cabeza = hash->obtenerBucket(i);
+        bool vacio = (cabeza == nullptr);
+
+        // Si soloConContenido, saltamos los buckets vacíos
+        if (soloConContenido && vacio) continue;
+
+        // Color del bucket según su estado
+        std::string color;
+        int largo = 0;
+        for (NodoHash *n = cabeza; n; n = n->siguiente) largo++;
+        if (vacio)        color = "white";
+        else if (largo == 1) color = "lightblue";   // sin colisión
+        else              color = "\"#FFD54F\"";     // amarillo: colisión
+
+        out << "    bucket" << i
+            << " [label=\"[" << i << "]\" shape=square style=filled fillcolor="
+            << color << " width=0.5];\n";
+
+        // Dibujar la cadena de nodos (productos) de este bucket
+        std::string anterior = "bucket" + std::to_string(i);
+        int idx = 0;
+        for (NodoHash *n = cabeza; n != nullptr; n = n->siguiente) {
+            std::string nombre = n->dato.nombre;
+            if (nombre.size() > 14) nombre = nombre.substr(0, 12) + "..";
+            std::string codigo = n->dato.codigoBarra;
+
+            std::string nodeId = "h" + std::to_string(i) + "_" + std::to_string(idx);
+            out << "    " << nodeId
+                << " [label=\"" << escapar(nombre) << "\\n" << escapar(codigo)
+                << "\" shape=box style=filled fillcolor=palegreen];\n";
+            out << "    " << anterior << " -> " << nodeId
+                << (idx == 0 ? " [color=black];\n" : " [color=red label=\"col\"];\n");
+            anterior = nodeId;
+            idx++;
+        }
+    }
+
+    // Mantener los buckets alineados verticalmente (rank=same por columna)
+    out << "\n    // Alinear buckets en columna\n";
+    out << "    { rank=same;";
+    // (los buckets ya van en columna por rankdir=LR; este subgrafo refuerza)
+    out << " }\n";
+
+    // Leyenda
+    out << "\n    leyenda [label=\""
+        << "azul=bucket sin colision\\n"
+        << "amarillo=bucket con colision\\n"
+        << "verde=producto  |  rojo=colision (chaining)\""
+        << " shape=note style=filled fillcolor=lightyellow];\n";
+
+    out << "}\n";
+    out.close();
+    std::cout << "[Dot] Generado: " << ruta << "\n";
+    return true;
 }

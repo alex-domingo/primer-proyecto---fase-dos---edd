@@ -2935,7 +2935,7 @@ QWidget* MainWindow::crearTabEstructuras() {
     QLabel *lblArb = new QLabel("Árbol:");
     lblArb->setStyleSheet(QString("color: %1; font-weight: bold;").arg(TEXTO_NEGRO));
     QComboBox *cmbArbol = new QComboBox();
-    cmbArbol->addItems({"Árbol AVL", "Árbol B", "Árbol B+", "Grafo de red"});
+    cmbArbol->addItems({"Árbol AVL", "Árbol B", "Árbol B+", "Tabla Hash", "Grafo de red"});
     cmbArbol->setStyleSheet(cstyle);
     cmbArbol->setFixedWidth(160);
 
@@ -2973,13 +2973,13 @@ QWidget* MainWindow::crearTabEstructuras() {
     };
 
     connect(btnGen, &QPushButton::clicked, [=]() {
-        if (red->contarSucursales() == 0 && cmbArbol->currentIndex() != 3) {
+        if (red->contarSucursales() == 0 && cmbArbol->currentIndex() != 4) {
             QMessageBox::warning(w, "Atención", "No hay sucursales cargadas."); return;
         }
         QString sucId = cmbSuc->currentData().toString();
         int arb = cmbArbol->currentIndex();
         QString rutaDot;
-        if (arb == 3) {
+        if (arb == 4) {
             rutaDot = "output/grafo_red.dot";
             red->generarDot(rutaDot.toStdString());
         } else {
@@ -2989,7 +2989,8 @@ QWidget* MainWindow::crearTabEstructuras() {
             Catalogo *cat = s->getCatalogo();
             if (arb == 0) { rutaDot = "output/avl.dot";    viz.generarAVL(cat->obtenerArbolAVL()); }
             else if (arb == 1) { rutaDot = "output/arbolB.dot";  viz.generarArbolB(cat->obtenerArbolB()); }
-            else { rutaDot = "output/arbolBP.dot"; viz.generarArbolBPlus(cat->obtenerArbolBPlus()); }
+            else if (arb == 2) { rutaDot = "output/arbolBP.dot"; viz.generarArbolBPlus(cat->obtenerArbolBPlus()); }
+            else { rutaDot = "output/hash.dot"; viz.generarHash(cat->obtenerTablaHash(), true); }
         }
         lblRuta->setText("Archivo generado: " + rutaDot);
         lblImg->setText(
