@@ -18,7 +18,6 @@
  *
  * La función hash que usamos es djb2, una función clásica
  * y simple que distribuye bien strings de longitud variable.
- * Referencia: Dan Bernstein, comp.lang.c, 1991.
  *
  * Complejidad (con factor de carga razonable):
  *   insertar  -> O(1) amortizado
@@ -61,6 +60,19 @@ public:
 
     int  obtenerTamano() const;
     bool estaVacia() const;
+
+    // ── Acceso de solo lectura para visualización ─────────────
+    int obtenerCapacidad()  const { return CAPACIDAD; }
+    int obtenerColisiones() const { return colisiones; }
+    // Devuelve la cabeza de la lista enlazada del bucket i (o nullptr)
+    NodoHash* obtenerBucket(int i) const {
+        if (i < 0 || i >= CAPACIDAD) return nullptr;
+        return tabla[i];
+    }
+    // Factor de carga = elementos / buckets
+    double factorCarga() const {
+        return CAPACIDAD > 0 ? (double)tamano / CAPACIDAD : 0.0;
+    }
 };
 
 #endif // TABLA_HASH_H
